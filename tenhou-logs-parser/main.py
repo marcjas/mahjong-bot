@@ -1,7 +1,6 @@
 from copy import deepcopy
 import re
 from xmlrpc.client import Boolean
-from attr import asdict
 from TenhouDecoder import Game
 import os
 import sys 
@@ -17,6 +16,23 @@ class Dataset:
         pass
 
     def pon_model_data(self):
+        states = []
+        actions = []
+
+        for index, round in enumerate(self._rounds):
+            round_state = RoundState(round, player_scores)
+
+            for event in round["events"]:
+                round_state.update_state(event)
+
+                if event["type"] == "Discard":
+                    
+
+            player_scores = self.update_player_scores(round, player_scores, round["deltas"])
+
+        self.save_state_actions(states, actions)
+
+
         pass
 
     def kan_model_data(self):
@@ -29,7 +45,6 @@ class Dataset:
         player_scores = [250, 250, 250, 250]
 
         for index, round in enumerate(self._rounds):
-            # Initial state  
             round_state = RoundState(round, player_scores)
 
             for event in round["events"]:
@@ -39,12 +54,18 @@ class Dataset:
                     player_idx = event["player"]
 
                     if round_state._player_states[player_idx].can_riichi():
-                        states.append(round_state)
-                        actions.append()
+                        test = round["round"]
+                        turn = round_state._player_states[player_idx]._turn + 1
 
-                    break
-                
-            break
+                        did_riichi = False
+                        if player_idx in round_state._riichis_dict:
+                            if round_state._riichis_dict[player_idx] == turn:
+                                did_riichi = True
+                        
+                        states.append(round_state._player_states[player_idx])
+                        actions.append(did_riichi)
+
+                        print(f"{test} | player={player_idx}, turn={turn}, did_riichi={did_riichi}")
 
             player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
@@ -58,7 +79,6 @@ class Dataset:
         player_scores = [250, 250, 250, 250]
 
         for index, round in enumerate(self._rounds):
-            # Initial state  
             round_state = RoundState(round, player_scores)
 
             for event in round["events"]:
@@ -68,6 +88,7 @@ class Dataset:
                     actions.append(event["tile"])
 
                 round_state.update_state(event)
+
 
             player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
@@ -239,84 +260,134 @@ class PlayerObservableState:
         if self._is_open_hand == True:
             return False
 
-        # can riichi logic
+        # easier to work with
         transformed_hand = self.transform_hand(deepcopy(self._private_tiles))
+        # print(transformed_hand)
 
-        print(transformed_hand)
-        print("-------")
+        m_tiles = transformed_hand[0:9]
+        p_tiles = transformed_hand[9:18]
+        s_tiles = transformed_hand[18:27]
+        w_tiles = transformed_hand[27:31]
+        d_tiles = transformed_hand[31:34]
 
+        m_combinations = self.find_suit_combinations(m_tiles)
+        p_combinations = self.find_suit_combinations(p_tiles)
+        s_combinations = self.find_suit_combinations(s_tiles)
+        w_combinations = self.find_honor_combinations(w_tiles)
+        d_combinations = self.find_honor_combinations(d_tiles)
 
-        # check for chiitoi and kokushi
-        #
-        #
+        combinations = [m_combinations, p_combinations, s_combinations, w_combinations, d_combinations]
+        counts = [0, 0, 0, 0]
 
-        if self.is_valid_hand(transformed_hand):
-            return False
+        for combination in combinations:
+            for idx, count in enumerate(combination):
+                counts[idx] += count 
 
-        for idx in range(len(transformed_hand)):
-            orig_hand = deepcopy(transformed_hand)
+        # check for chiitoi
+        pair_count = 0
+        for tile in transformed_hand:
+            if tile >= 2:
+                pair_count += 1
+        if pair_count == 6:
+            return True
 
-            if orig_hand[idx] == 0:
-                continue
+        # check for kokushi musou
+        # 13wait OR 11 + pair 
+        # sum of specific indices == 13
+        # TODO
 
-            print(idx)
-            print("start")
-            
-            # print(transformed_hand)
-            for idx_2 in range(len(tiles)):
-                if idx == idx_2 or orig_hand[idx_2] == 4:
-                    continue
-
-                print(idx_2)
-
-                orig_hand[idx] -= 1
-                orig_hand[idx_2] += 1
-
-                if self.is_valid_hand(orig_hand):
-                    return True
-
-                # reset
-                orig_hand[idx] += 1
-                orig_hand[idx_2] -= 1
-
-            print("end")
+        # (4, 0, 0, 2) eg. 123 123 444 555 2 ew
+        # (4, 0, 1, 0) eg. 123 123 444 555 23
+        # (3, 2, 0, 1) eg. 123 123 123 44 55 ew 
+        # (3, 1, 1, 1) eg. 123 123 444 55 23 ew
+        if counts == [4, 0, 0, 2] \
+            or counts == [4, 0, 1, 0] \
+            or counts == [3, 2, 0, 1] \
+            or counts == [3, 1, 1, 1]:
+                return True
 
         return False
 
-    def is_valid_hand(self, hand) -> Boolean:
-        """
-        :param hand: Closed hand consisting of 14 tiles (drawn tile included)
-        """
+    def find_suit_combinations(self, tiles):
+        mentsu_count = 0
+        pair_count = 0
+        taatsu_count = 0
+        isolated_count = 0
 
-        groups_needed = (sum(hand) // 3) + 1 # due to closed kan
+        # check koutsu (triplet)
+        for idx in range(len(tiles)):
+            if tiles[idx] >= 3:
+                mentsu_count += 1
+                tiles[idx] -= 3
 
-        m_tiles = hand[0:9]
-        p_tiles = hand[9:18]
-        s_tiles = hand[18:27]        
-        w_tiles = hand[27:31]
-        d_tiles = hand[31:34]
+        # check shuntsu (sequence)
+        for idx in range(len(tiles) - 2):
+            if tiles[idx] == 0 or tiles[idx + 1] == 0 or tiles[idx + 2] == 0:
+                continue
 
-        # [2, 0, 1, 1, 0, 0, 0, 1, 0]
-        # [0, 1, 0, 0, 0, 0, 0, 0, 1]
-        # [0, 2, 1, 0, 1, 1, 0, 1, 1]
-        # [0, 0, 0, 0]
-        # [0, 0, 0]
+            sum = tiles[idx] + tiles[idx + 1] + tiles[idx + 2]
+            count = sum // 3
 
-        # m_groups = self.find_groups(m_tiles)
-        # p_groups = self.find_groups(p_tiles)
-        # s_groups = self.find_groups(s_tiles)
-        # w_groups = self.find_groups(w_tiles)
-        # d_groups = self.find_groups(d_groups)
+            mentsu_count += count
+            tiles[idx] -= count 
+            tiles[idx + 1] -= count
+            tiles[idx + 2] -= count
+            
+        # check pair 
+        for idx in range(len(tiles)):
+            if tiles[idx] == 2:
+                pair_count += 1
+                tiles[idx] -= 2
 
-        print(m_tiles)
-        print(p_tiles)
-        print(s_tiles)
-        print(w_tiles)
-        print(d_tiles)
+        # check taatsu (unfinished sequence eg. 1-2, 1-3, 2-3)
+        for idx in range(len(tiles) - 2):
+            sum = tiles[idx] + tiles[idx + 1] + tiles[idx + 2]
 
+            if sum == 2:
+                taatsu_count += 1
+                if tiles[idx] == 1:
+                    tiles[idx] -= 1
 
+                if tiles[idx + 1] == 1:
+                    tiles[idx + 1] -= 1
 
-        return False 
+                if tiles[idx + 2] == 1:
+                    tiles[idx + 2] -= 1
+
+        # check isolated 
+        sum = 0
+        for cnt in tiles:
+            sum += cnt
+
+        isolated_count += sum
+
+        return (mentsu_count, pair_count, taatsu_count, isolated_count)
+
+    def find_honor_combinations(self, tiles):
+        mentsu_count = 0
+        pair_count = 0
+        isolated_count = 0
+
+        # check koutsu (triplet)
+        for idx in range(len(tiles)):
+            if tiles[idx] >= 3:
+                mentsu_count += 1
+                tiles[idx] -= 3
+
+        # check pair 
+        for idx in range(len(tiles)):
+            if tiles[idx] == 2:
+                pair_count += 1
+                tiles[idx] -= 2
+
+        # check isolated 
+        sum = 0
+        for cnt in tiles:
+            sum += cnt
+
+        isolated_count += sum
+
+        return (mentsu_count, pair_count, 0, isolated_count)
         
     def transform_hand(self, hand):
         new_hand = [0] * 34
@@ -369,6 +440,7 @@ _others_riichi_status:
 
     def to_model_input(self):
         return self
+
 
 def decode_tile(tile_code):
     UNICODE_TILES = """
