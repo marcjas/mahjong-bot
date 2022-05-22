@@ -14,8 +14,13 @@ def main():
     options = webdriver.ChromeOptions()
     options.add_argument("--allow-file-access-from-files")
     options.add_argument("--disable-web-security")
+    options.add_argument("--log-level=3")
+    options.add_argument("--disable-infobars")
+    options.add_experimental_option("useAutomationExtension", False)
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
     driver = webdriver.Chrome(options=options)
+    driver.set_window_size(616, 700)
     driver.get(tenhou_url)
     time.sleep(5)
 
@@ -39,25 +44,24 @@ def read(driver):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")
 
     board = decode_canvas(driver, canvases[1])
-    board = cv2.cvtColor(board, cv2.COLOR_RGB2GRAY)
+    board = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
+    resized = False
+    if board.shape[0] != 545 and board[1] != 600:
+        print("Window size was changed. Falling back to non-precise discard pile cropping.")
+        board = cv2.resize(board, (600, 545), interpolation=cv2.INTER_LINEAR)
+        resized = True
     player_tiles = read_board.get_player_tiles(board)
     print(' '.join(player_tiles))
-    #cv2.imwrite("tiles.png", cv2_img)
-
-    #for i, canvas in enumerate(canvases):
-    #    driver.execute_script("arguments[0].crossOrigin = 'anonymous';", canvas)
-    #    time.sleep(1)
-    #    canvas_base64 = driver.execute_script("return arguments[0].toDataURL('image/png').substring(21);", canvas)
-    #    canvas_png = base64.b64decode(canvas_base64)
-
-    #    with open(f"canvas_{i}.png", 'wb') as f:
-    #        f.write(canvas_png)
+    discarded_tiles = read_board.get_discarded_by_scan(board) if resized else read_board.get_discarded(board)
+    print("Discarded:")
+    for i in range(4):
+        print(' '.join(discarded_tiles[i]))
 
 def save(driver):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")
 
     board = decode_canvas(driver, canvases[1])
-    board = cv2.cvtColor(board, cv2.COLOR_RGB2GRAY)
+    board = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
     cv2.imwrite("board.png", board)
 
 def decode_canvas(driver, canvas):
