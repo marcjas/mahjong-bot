@@ -17,17 +17,17 @@ from Data import Data
 
 class Tile(Data, int):
     UNICODE_TILES = """
-        🀐 🀑 🀒 🀓 🀔 🀕 🀖 🀗 🀘
-        🀙 🀚 🀛 🀜 🀝 🀞 🀟 🀠 🀡
         🀇 🀈 🀉 🀊 🀋 🀌 🀍 🀎 🀏
+        🀙 🀚 🀛 🀜 🀝 🀞 🀟 🀠 🀡
+        🀐 🀑 🀒 🀓 🀔 🀕 🀖 🀗 🀘
         🀀 🀁 🀂 🀃 
         🀆 🀅 🀄
     """.split()
 
     TILES = """
-        1s 2s 3s 4s 5s 6s 7s 8s 9s
-        1p 2p 3p 4p 5p 6p 7p 8p 9p
         1m 2m 3m 4m 5m 6m 7m 8m 9m
+        1p 2p 3p 4p 5p 6p 7p 8p 9p
+        1s 2s 3s 4s 5s 6s 7s 8s 9s
         ew sw ww nw
         wd gd rd
     """.split()
@@ -441,4 +441,3 @@ if __name__ == '__main__':
         with open(dump_path, 'wb') as f:
             pickle.dump(game_data, f)
             print(f"Finished dumping to {dump_path}")
-
