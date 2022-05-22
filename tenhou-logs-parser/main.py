@@ -1,4 +1,6 @@
-from typing import Dict
+from copy import deepcopy
+import re
+from xmlrpc.client import Boolean
 from attr import asdict
 from TenhouDecoder import Game
 import os
@@ -21,13 +23,39 @@ class Dataset:
         pass
 
     def riichi_model_data(self):
-        pass
+        states = []
+        actions = []
+
+        player_scores = [250, 250, 250, 250]
+
+        for index, round in enumerate(self._rounds):
+            # Initial state  
+            round_state = RoundState(round, player_scores)
+
+            for event in round["events"]:
+                round_state.update_state(event)
+
+                if event["type"] == "Draw":
+                    player_idx = event["player"]
+
+                    if round_state._player_states[player_idx].can_riichi():
+                        states.append(round_state)
+                        actions.append()
+
+                    break
+                
+            break
+
+            player_scores = self.update_player_scores(round, player_scores, round["deltas"])
+
+        self.save_state_actions(states, actions)
+
 
     def discard_model_data(self):
         states = []
         actions = []
 
-        player_scores = [25000, 25000, 25000, 25000]
+        player_scores = [250, 250, 250, 250]
 
         for index, round in enumerate(self._rounds):
             # Initial state  
@@ -41,30 +69,25 @@ class Dataset:
 
                 round_state.update_state(event)
 
-            if round["agari"]:
-                round_state.update_player_scores(round["agari"])
-                player_scores = round_state._player_scores
-            # todo sjekk honba logikk
-            
-            break
+            player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
-        # returner (states, actions) med pickle (?)
+        self.save_state_actions(states, actions)
 
 
-tiles = [
-    "0m", "1m", "2m", "3m", "4m", 
-    "5m", "6m", "7m", "8m", "9m",
-    "0p", "1p", "2p", "3p", "4p", 
-    "5p", "6p", "7p", "8p", "9p", 
-    "0s", "1s", "2s", "3s", "4s", 
-    "5s", "6s", "7s", "8s", "9s", 
-    "ew", "sw", "ww", "nw",       
-    "wd", "gd", "rd"              
-]
+    def update_player_scores(self, round, old, deltas):
+        new_scores = [a + b for a, b in zip(old, deltas)]
 
-m_tiles = tiles[1:10]
-p_tiles = tiles[11:20]
-s_tiles = tiles[21:30]
+        if len(round["reaches"]) == 0:
+            return new_scores
+
+        for player_idx in round["reaches"]:
+            new_scores[player_idx] -= 10
+
+        return new_scores
+
+    def save_state_actions(self, states, actions):
+        pass
+
 
 class RoundState:
     def __init__(self, round, player_scores):
@@ -87,16 +110,18 @@ class RoundState:
         self._player_states = [self._p0_state, self._p1_state, self._p2_state, self._p3_state]
 
     def get_player_wind(self, player_idx, dealer_idx):
-        winds = ["east", "north", "west", "south"]
+        winds = ["east", "south", "west", "north"]
         return winds[(player_idx - dealer_idx) % 4]
-
-    def update_player_scores(self, agari):
-        pass
 
     def update_state(self, event):
         match event["type"]:
             case "Dora":
-                self._dora_indicators.append(event["tile"][0:2])
+                dora_tile = event["tile"]
+                valid_tile = bool(re.search("[a-z]", str(dora_tile)))
+                if not valid_tile:
+                    dora_tile = decode_tile(dora_tile)
+
+                self._dora_indicators.append(dora_tile[0:2])
 
             case "Discard":
                 player_idx = event["player"]
@@ -112,7 +137,8 @@ class RoundState:
                 self._player_states[player_idx].draw(event["tile"])
 
             case "Call":
-                pass
+                player_idx = event["player"]
+                self._player_states[player_idx].call(event["meld"])
 
         self.update_players_aka_dora_count_in_hand()
 
@@ -121,10 +147,22 @@ class RoundState:
         self._p1_state.update_aka_dora_count_in_hand()
         self._p2_state.update_aka_dora_count_in_hand()
         self._p3_state.update_aka_dora_count_in_hand()
-
-        
-
     
+tiles = [
+    "1m", "2m", "3m", "4m", 
+    "5m", "6m", "7m", "8m", "9m",
+    "1p", "2p", "3p", "4p", 
+    "5p", "6p", "7p", "8p", "9p", 
+    "1s", "2s", "3s", "4s", 
+    "5s", "6s", "7s", "8s", "9s", 
+    "ew", "sw", "ww", "nw",       
+    "wd", "gd", "rd"              
+]
+
+m_tiles = tiles[0:9]
+p_tiles = tiles[9:18]
+s_tiles = tiles[18:27]
+
 class PlayerObservableState:
     def __init__(self, player_idx, round, player_scores, discarded_tiles, open_tiles, dora_indicators, wind, riichi_status):
         self._player_idx = player_idx 
@@ -133,6 +171,7 @@ class PlayerObservableState:
         self._round_info = round["round"] # Tuple of string (name), int (honba count), int (leftover riichi sticks)
         self._turn = 0
         self._riichi_status = riichi_status
+        self._is_open_hand = False
 
         """
         Features:
@@ -148,7 +187,7 @@ class PlayerObservableState:
         self._private_discarded_tiles = self._discarded_tiles[self._player_idx]
         self._others_discarded_tiles = self._discarded_tiles[:self._player_idx] + self._discarded_tiles[self._player_idx + 1:]
         self._private_open_tiles = self._open_tiles[self._player_idx] 
-        self._others_open_tiles = self._discarded_tiles[:self._player_idx] + self._discarded_tiles[self._player_idx + 1:]
+        self._others_open_tiles = self._open_tiles[:self._player_idx] + self._open_tiles[self._player_idx + 1:]
         self._dora_indicators = dora_indicators
         self._round_name = self._round_info[0]
         self._player_scores = player_scores
@@ -171,16 +210,184 @@ class PlayerObservableState:
 
     def discard(self, tile):
         self._private_tiles.remove(tile)
-        self._discarded_tiles.append(tile)
+        self._discarded_tiles[self._player_idx].append(tile)
 
         self._turn += 1
 
     def draw(self, tile):
         self._private_tiles.append(tile)
 
-    def to_model_input(self):
-        return self._private_tiles
+    def call(self, meld):
+        tiles = meld["tiles"]
 
+        if meld["type"] == "kan":
+            self._is_open_hand = True
+
+        for tile in tiles:
+            if tile in self._private_tiles:
+                self._private_tiles.remove(tile)
+
+        self._open_tiles[self._player_idx].append(tiles)
+
+    def can_riichi(self) -> Boolean:
+        if self._player_scores[self._player_idx] < 10:
+            return False
+
+        if self._riichi_status[self._player_idx] == 1:
+            return False
+
+        if self._is_open_hand == True:
+            return False
+
+        # can riichi logic
+        transformed_hand = self.transform_hand(deepcopy(self._private_tiles))
+
+        print(transformed_hand)
+        print("-------")
+
+
+        # check for chiitoi and kokushi
+        #
+        #
+
+        if self.is_valid_hand(transformed_hand):
+            return False
+
+        for idx in range(len(transformed_hand)):
+            orig_hand = deepcopy(transformed_hand)
+
+            if orig_hand[idx] == 0:
+                continue
+
+            print(idx)
+            print("start")
+            
+            # print(transformed_hand)
+            for idx_2 in range(len(tiles)):
+                if idx == idx_2 or orig_hand[idx_2] == 4:
+                    continue
+
+                print(idx_2)
+
+                orig_hand[idx] -= 1
+                orig_hand[idx_2] += 1
+
+                if self.is_valid_hand(orig_hand):
+                    return True
+
+                # reset
+                orig_hand[idx] += 1
+                orig_hand[idx_2] -= 1
+
+            print("end")
+
+        return False
+
+    def is_valid_hand(self, hand) -> Boolean:
+        """
+        :param hand: Closed hand consisting of 14 tiles (drawn tile included)
+        """
+
+        groups_needed = (sum(hand) // 3) + 1 # due to closed kan
+
+        m_tiles = hand[0:9]
+        p_tiles = hand[9:18]
+        s_tiles = hand[18:27]        
+        w_tiles = hand[27:31]
+        d_tiles = hand[31:34]
+
+        # [2, 0, 1, 1, 0, 0, 0, 1, 0]
+        # [0, 1, 0, 0, 0, 0, 0, 0, 1]
+        # [0, 2, 1, 0, 1, 1, 0, 1, 1]
+        # [0, 0, 0, 0]
+        # [0, 0, 0]
+
+        # m_groups = self.find_groups(m_tiles)
+        # p_groups = self.find_groups(p_tiles)
+        # s_groups = self.find_groups(s_tiles)
+        # w_groups = self.find_groups(w_tiles)
+        # d_groups = self.find_groups(d_groups)
+
+        print(m_tiles)
+        print(p_tiles)
+        print(s_tiles)
+        print(w_tiles)
+        print(d_tiles)
+
+
+
+        return False 
+        
+    def transform_hand(self, hand):
+        new_hand = [0] * 34
+
+        mapped_hand = list(map(lambda x: x[0:2], hand))
+
+        for tile in mapped_hand:
+            idx = tiles.index(tile)
+            new_hand[idx] += 1
+
+
+        return new_hand
+
+
+    def __str__(self):
+        return f"""
+_private_tiles:
+    {self._private_tiles}
+
+_private_open_tiles: 
+    {self._private_open_tiles}    
+
+_private_discarded_tiles:
+    {self._private_discarded_tiles}
+
+_others_discarded_tiles:
+    {self._others_discarded_tiles}
+
+_others_open_tiles: 
+    {self._others_open_tiles}
+
+_dora_indicators:
+    {self._dora_indicators}
+
+_round_name:
+    {self._round_name}
+
+_player_scores:
+    {self._player_scores}
+
+_self_wind: 
+    {self._self_wind}
+
+_aka_doras_in_hand:
+    {self._aka_doras_in_hand}
+
+_others_riichi_status:
+    {self._others_riichi_status}
+        """
+
+    def to_model_input(self):
+        return self
+
+def decode_tile(tile_code):
+    UNICODE_TILES = """
+        🀇 🀈 🀉 🀊 🀋 🀌 🀍 🀎 🀏
+        🀙 🀚 🀛 🀜 🀝 🀞 🀟 🀠 🀡
+        🀐 🀑 🀒 🀓 🀔 🀕 🀖 🀗 🀘
+        🀀 🀁 🀂 🀃 
+        🀆 🀅 🀄
+    """.split()
+
+    TILES = """
+        1m 2m 3m 4m 5m 6m 7m 8m 9m
+        1p 2p 3p 4p 5p 6p 7p 8p 9p
+        1s 2s 3s 4s 5s 6s 7s 8s 9s
+        ew sw ww nw
+        wd gd rd
+    """.split()
+
+    return TILES[tile_code // 4] + str(tile_code % 4)
 
 def main(logs_dir = "../tenhou-logs/xml-logs"):
     game = Game('DEFAULT')
@@ -189,15 +396,17 @@ def main(logs_dir = "../tenhou-logs/xml-logs"):
 
     for log_path in log_paths:
         print(log_path)
+
         game.decode(open(log_path))
 
         game_data = game.asdata()
 
         model_input = Dataset(game_data) 
 
-        model_input.discard_model_data()
+        # model_input.discard_model_data()
+        model_input.riichi_model_data()
 
-        # break
+        break
 
 
 if __name__ == '__main__':
