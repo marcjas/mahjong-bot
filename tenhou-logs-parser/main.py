@@ -12,31 +12,145 @@ class Dataset:
         self._players = data["players"]
         self._rounds = data["rounds"]
 
-    def chi_model_data(self):
-        pass
-
-    def pon_model_data(self):
+    def chii_model_data(self):
         states = []
         actions = []
+        player_scores = [250, 250, 250, 250]
 
-        for index, round in enumerate(self._rounds):
+        for round_idx, round in enumerate(self._rounds):
             round_state = RoundState(round, player_scores)
-
-            for event in round["events"]:
+            for event_idx, event in enumerate(round["events"]):
                 round_state.update_state(event)
-
                 if event["type"] == "Discard":
+                    discard_player_idx = event["player"]
+                    player_idx = ((discard_player_idx + 1) + 4) % 4
                     
+                    if round_state._others_riichi_status[player_idx] == 1:
+                        continue
+
+                    if round_state._player_states[player_idx].can_chii(event["tile"]):
+                        did_chii = False
+                        next_event_idx = event_idx + 1
+
+                        try:
+                            next_event = round["events"][next_event_idx]
+                        except:
+                            break
+
+                        if next_event["type"] == "Call" and next_event["meld"]["type"] == "chi" and next_event["player"] == player_idx:
+                            did_chii = True
+
+                        states.append(round_state._player_states[player_idx])
+                        actions.append(did_chii)
+
+                        print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
+
+            player_scores = self.update_player_scores(round, player_scores, round["deltas"])
+
+        print(player_scores)
+
+        self.save_state_actions(states, actions)
+
+    def pon_model_data(self):
+        """
+        note: the .mjlogs do not have data on everyone who "clicked" pon, so if 
+        two player pons on the same tile, only one of them gets to call the tile.
+        the (state, action) will therefore not be fully accurate, as there will 
+        be cases where the action is false even though a player wanted to pon
+        """
+        states = []
+        actions = []
+        player_scores = [250, 250, 250, 250]
+
+        for round_idx, round in enumerate(self._rounds):
+            round_state = RoundState(round, player_scores)
+            for event_idx, event in enumerate(round["events"]):
+                round_state.update_state(event)
+                if event["type"] == "Discard":
+                    discard_player_idx = event["player"]
+                    for player_idx in [x for x in range(4) if x != discard_player_idx]:
+                        if round_state._others_riichi_status[player_idx] == 1:
+                            continue
+                        
+                        if round_state._player_states[player_idx].can_pon(event["tile"]):
+                            did_pon = False
+                            next_event_idx = event_idx + 1
+
+                            try:
+                                next_event = round["events"][next_event_idx]
+                            except:
+                                break 
+
+                            if next_event["type"] == "Call" and next_event["meld"]["type"] == "pon" and next_event["player"] == player_idx:
+                                did_pon = True
+
+                            states.append(round_state._player_states[player_idx])
+                            actions.append(did_pon)
+
+                            print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
 
             player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
         self.save_state_actions(states, actions)
 
 
-        pass
-
     def kan_model_data(self):
-        pass
+        """
+        same issue as pon_model_data
+        """
+        states = []
+        actions = []
+        player_scores = [250, 250, 250, 250]
+
+        for round_idx, round in enumerate(self._rounds):
+            round_state = RoundState(round, player_scores)
+            for event_idx, event in enumerate(round["events"]):
+                round_state.update_state(event)
+                if event["type"] == "Draw":
+                    player_idx = event["player"]
+                    if round_state._player_states[player_idx].can_chakan():
+                        did_chakan = False
+                        next_event_idx = event_idx + 1
+
+                        try:
+                            next_event = round["events"][next_event_idx]
+                        except:
+                            break 
+
+                        if next_event["type"] == "Call" and next_event["meld"]["type"] == "chakan" and next_event["player"] == player_idx:
+                            did_chakan = True
+
+                        states.append(round_state._player_states[player_idx])
+                        actions.append(did_chakan)
+
+                        print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
+
+                if event["type"] == "Discard":
+                    discard_player_idx = event["player"]
+                    for player_idx in [x for x in range(4) if x != discard_player_idx]:
+                        if round_state._others_riichi_status[player_idx] == 1:
+                            continue
+
+                        if round_state._player_states[player_idx].can_kan(event["tile"]):
+                            did_kan = False
+                            next_event_idx = event_idx + 1
+
+                            try:
+                                next_event = round["events"][next_event_idx]
+                            except:
+                                break 
+
+                            if next_event["type"] == "Call" and next_event["meld"]["type"] == "kan" and next_event["player"] == player_idx:
+                                did_kan = True
+
+                            states.append(round_state._player_states[player_idx])
+                            actions.append(did_kan)
+
+                            print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
+
+            player_scores = self.update_player_scores(round, player_scores, round["deltas"])
+
+        self.save_state_actions(states, actions)
 
     def riichi_model_data(self):
         states = []
@@ -54,7 +168,6 @@ class Dataset:
                     player_idx = event["player"]
 
                     if round_state._player_states[player_idx].can_riichi():
-                        test = round["round"]
                         turn = round_state._player_states[player_idx]._turn + 1
 
                         did_riichi = False
@@ -65,7 +178,7 @@ class Dataset:
                         states.append(round_state._player_states[player_idx])
                         actions.append(did_riichi)
 
-                        print(f"{test} | player={player_idx}, turn={turn}, did_riichi={did_riichi}")
+                        print(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
 
             player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
@@ -80,11 +193,10 @@ class Dataset:
 
         for index, round in enumerate(self._rounds):
             round_state = RoundState(round, player_scores)
-
             for event in round["events"]:
                 if event["type"] == "Discard":
                     player_idx = event["player"]
-                    states.append(round_state._player_states[player_idx].to_model_input())
+                    states.append(round_state._player_states[player_idx])
                     actions.append(event["tile"])
 
                 round_state.update_state(event)
@@ -249,6 +361,60 @@ class PlayerObservableState:
                 self._private_tiles.remove(tile)
 
         self._open_tiles[self._player_idx].append(tiles)
+
+    def can_chii(self, tile) -> Boolean:
+        number = tile[0:1]
+        suit = tile[1:2]
+
+        if suit == "w" or suit == "d":
+            return False
+
+        transformed_hand = self.transform_hand(self._private_tiles)
+
+        offset = 0
+        if suit == "p": offset = 9
+        if suit == "s": offset = 18
+
+        for combination in chii_combinations[number]:
+            if transformed_hand[offset + int(combination[0])-1] > 0 \
+                and transformed_hand[offset + int(combination[1])-1] > 0:
+                return True
+
+        return False 
+
+    def can_pon(self, tile) -> Boolean:
+        tile = tile[0:2]
+
+        transformed_hand = self.transform_hand(self._private_tiles)
+
+        idx = tiles.index(tile)
+
+        if transformed_hand[idx] >= 2:
+            return True
+
+        return False
+
+    def can_chakan(self) -> Boolean:
+        transformed_hand = self.transform_hand(self._private_tiles)
+
+        for tile_cnt in transformed_hand:
+            if tile_cnt == 4:
+                return True
+
+        return False
+        
+
+    def can_kan(self, tile) -> Boolean:
+        tile = tile[0:2]
+
+        transformed_hand = self.transform_hand(self._private_tiles)
+
+        idx = tiles.index(tile)
+
+        if transformed_hand[idx] >= 3:
+            return True
+
+        return False
 
     def can_riichi(self) -> Boolean:
         if self._player_scores[self._player_idx] < 10:
@@ -461,6 +627,18 @@ def decode_tile(tile_code):
 
     return TILES[tile_code // 4] + str(tile_code % 4)
 
+chii_combinations = {
+    "1": ["23"],
+    "2": ["13", "34"],
+    "3": ["12", "24", "45"],
+    "4": ["23", "35", "56"],
+    "5": ["34", "46", "67"],
+    "6": ["45", "57", "78"],
+    "7": ["56", "68", "89"],
+    "8": ["67", "79"],
+    "9": ["78"],
+}
+
 def main(logs_dir = "../tenhou-logs/xml-logs"):
     game = Game('DEFAULT')
 
@@ -476,7 +654,10 @@ def main(logs_dir = "../tenhou-logs/xml-logs"):
         model_input = Dataset(game_data) 
 
         # model_input.discard_model_data()
-        model_input.riichi_model_data()
+        # model_input.riichi_model_data()
+        # model_input.pon_model_data()
+        # model_input.kan_model_data()
+        model_input.chii_model_data()
 
         break
 
