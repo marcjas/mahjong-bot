@@ -1,3 +1,5 @@
+// credit https://github.com/ApplySci/tenhou-log
+
 const exactTranslation = {
 
     // Yaku

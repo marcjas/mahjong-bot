@@ -1,3 +1,5 @@
+# credit https://github.com/ApplySci/tenhou-log
+
 def asdata(obj, asdata):
     if isinstance(obj, Data):
         return obj.asdata(asdata)

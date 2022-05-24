@@ -1,6 +1,7 @@
 ﻿#! /usr/bin/python3
 #! /usr/bin/python3
 # -*- coding: utf-8 -*-
+# https://github.com/ApplySci/tenhou-log
 
 from fileinput import filename
 from inspect import getsourcefile

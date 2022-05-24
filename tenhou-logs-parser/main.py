@@ -49,6 +49,8 @@ class GameLogParser:
 
             print(f'{round["round"]} | scores={player_scores}')
 
+        print(self.states[0][0])
+
 
     def get_chii_model_data(self, round_state, round, event, event_idx):
         if event["type"] == "Discard":
@@ -504,44 +506,21 @@ class PlayerObservableState:
         return new_hand
 
     def __str__(self):
-        return f"""
-_private_tiles:
-    {self._private_tiles}
+        return (
+            f"_private_tiles: {sort_hand(self._private_tiles)}\n"
+            f"_private_discarded_tiles: {self._private_discarded_tiles}\n"
+            f"_others_discarded_tiles: {self._others_discarded_tiles}\n"
+            f"_others_open_tiles: {self._others_open_tiles}\n"
+            f"_dora_indicators: {self._dora_indicators}\n"
+            f"_round_name: {self._round_name}\n"
+            f"_player_scores: {self._player_scores}\n"
+            f"_self_wind: {self._self_wind}\n"
+            f"_aka_doras_in_hand: {self._aka_doras_in_hand}\n"
+            f"_others_riichi_status: {self._others_riichi_status}\n"
+        )
 
-_private_open_tiles: 
-    {self._private_open_tiles}    
-
-_private_discarded_tiles:
-    {self._private_discarded_tiles}
-
-_others_discarded_tiles:
-    {self._others_discarded_tiles}
-
-_others_open_tiles: 
-    {self._others_open_tiles}
-
-_dora_indicators:
-    {self._dora_indicators}
-
-_round_name:
-    {self._round_name}
-
-_player_scores:
-    {self._player_scores}
-
-_self_wind: 
-    {self._self_wind}
-
-_aka_doras_in_hand:
-    {self._aka_doras_in_hand}
-
-_others_riichi_status:
-    {self._others_riichi_status}
-        """
-
-    def to_model_input(self):
-        return self
-
+def sort_hand(tiles):
+    return sorted(tiles, key = lambda x: (x[1], x[0]))
 
 def decode_tile(tile_code):
     UNICODE_TILES = """
