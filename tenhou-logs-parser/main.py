@@ -1,11 +1,17 @@
 import argparse
 from copy import deepcopy
-from pickle import TRUE
 import re
+from typing import Dict
 from xmlrpc.client import Boolean
 from TenhouDecoder import Game
 import os
 import sys
+import logging
+import csv
+import time
+
+
+LOGGING_LEVEL = logging.INFO
 
 GET_CHII_MODEL_INPUT        = True 
 GET_PON_MODEL_INPUT         = True 
@@ -17,12 +23,12 @@ class GameLogParser:
     states = [[], [], [], [], []]
     actions = [[], [], [], [], []]
 
-    def __init__(self, data):
+    def __init__(self, data: Dict):
         self._data = data
         self._players = data["players"]
         self._rounds = data["rounds"]
 
-    def get_nn_input(self):
+    def get_nn_input(self, export_to_csv=True):
         player_scores = [250, 250, 250, 250]
 
         for round in self._rounds:
@@ -47,10 +53,10 @@ class GameLogParser:
 
             player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
-            print(f'{round["round"]} | scores={player_scores}')
-
-        print(self.states[0][0])
-
+            logging.debug(f'{round["round"]} | scores={player_scores}')
+        
+        if export_to_csv:
+            self.export_to_csv()
 
     def get_chii_model_data(self, round_state, round, event, event_idx):
         if event["type"] == "Discard":
@@ -75,8 +81,7 @@ class GameLogParser:
                 self.states[0].append(round_state._player_states[player_idx])
                 self.actions[0].append(did_chii)
 
-                print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
-
+                logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
 
     def get_pon_model_data(self, round_state, round, event, event_idx):
         if event["type"] == "Discard":
@@ -100,7 +105,7 @@ class GameLogParser:
                     self.states[1].append(round_state._player_states[player_idx])
                     self.actions[1].append(did_pon)
 
-                    print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
+                    logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
 
     def get_kan_model_data(self, round_state, round, event, event_idx):
         if event["type"] == "Draw":
@@ -120,7 +125,7 @@ class GameLogParser:
                 self.states[2].append(round_state._player_states[player_idx])
                 self.actions[2].append(did_chakan)
 
-                print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
+                logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
 
         if event["type"] == "Discard":
             discard_player_idx = event["player"]
@@ -143,7 +148,7 @@ class GameLogParser:
                     self.states[2].append(round_state._player_states[player_idx])
                     self.actions[2].append(did_kan)
 
-                    print(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
+                    logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
 
     def get_riichi_model_data(self, round_state, round, event):
         if event["type"] == "Draw":
@@ -160,8 +165,7 @@ class GameLogParser:
                 self.states[3].append(round_state._player_states[player_idx])
                 self.actions[3].append(did_riichi)
 
-                print(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
-
+                logging.debug(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
 
     def get_discard_model_data(self, round_state, round, event):
         if event["type"] == "Discard":
@@ -172,8 +176,7 @@ class GameLogParser:
             self.states[4].append(round_state._player_states[player_idx])
             self.actions[4].append(event["tile"])
 
-            print(f'{round["round"]} | player{player_idx}, turn={round_state._player_states[player_idx]._turn + 1}, discard={event["tile"]}')
-
+            logging.debug(f'{round["round"]} | player{player_idx}, turn={round_state._player_states[player_idx]._turn + 1}, discard={event["tile"]}')
 
     def update_player_scores(self, round, scores, deltas):
         new_scores = [a + b for a, b in zip(scores, deltas)]
@@ -185,6 +188,27 @@ class GameLogParser:
             new_scores[player_idx] -= 10
 
         return new_scores
+
+    def export_to_csv(self):
+        for i, (states, actions) in enumerate(zip(self.states, self.actions)):
+            actions = list(map(lambda a: int(a) if a in [0,1,2,3] else a[0:2], actions)) 
+
+            match i:
+                case 0: csv_file_name = "../data/model_data/chii_data.csv"
+                case 1: csv_file_name = "../data/model_data/pon_data.csv"
+                case 2: csv_file_name = "../data/model_data/kan_data.csv"
+                case 3: csv_file_name = "../data/model_data/riichi_data.csv"
+                case 4: csv_file_name = "../data/model_data/discard_data.csv"
+
+            # with open(csv_file_name, mode="a+") as csv_file:
+            with open(csv_file_name, mode="w") as csv_file:
+                writer = csv.writer(csv_file, delimiter=',')
+                for state, action in zip(states, actions):
+                    row = [f for f in state.to_features_list()]
+                    row.append(action)
+                    writer.writerow(row)
+
+        logging.debug(time.time())
 
 class RoundState:
     def __init__(self, round, player_scores):
@@ -199,10 +223,10 @@ class RoundState:
         self._riichi_turns = self._round["reach_turns"]
         self._riichis_dict = { self._riichis[i]: self._riichi_turns[i] for i in range(len(self._riichis)) }
 
-        self._p0_state = PlayerObservableState(0, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(0, self._dealer), self._others_riichi_status)
-        self._p1_state = PlayerObservableState(1, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(1, self._dealer), self._others_riichi_status)
-        self._p2_state = PlayerObservableState(2, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(2, self._dealer), self._others_riichi_status)
-        self._p3_state = PlayerObservableState(3, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(3, self._dealer), self._others_riichi_status)
+        self._p0_state = PlayerState(0, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(0, self._dealer), self._others_riichi_status)
+        self._p1_state = PlayerState(1, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(1, self._dealer), self._others_riichi_status)
+        self._p2_state = PlayerState(2, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(2, self._dealer), self._others_riichi_status)
+        self._p3_state = PlayerState(3, self._round, self._player_scores, self._discarded_tiles, self._open_tiles, self._dora_indicators, self.get_player_wind(3, self._dealer), self._others_riichi_status)
 
         self._player_states = [self._p0_state, self._p1_state, self._p2_state, self._p3_state]
 
@@ -256,7 +280,7 @@ tiles = [
     "wd", "gd", "rd"              
 ]
 
-class PlayerObservableState:
+class PlayerState:
     def __init__(self, player_idx, round, player_scores, discarded_tiles, open_tiles, dora_indicators, wind, riichi_status):
         self._player_idx = player_idx 
         self._discarded_tiles = discarded_tiles
@@ -266,16 +290,7 @@ class PlayerObservableState:
         self._riichi_status = riichi_status
         self._is_open_hand = False
 
-        """
-        Features:
-            - self._private_tiles               34 x 4 x 1
-            - self._private_discarded tiles     34 x 30
-            - self._others_discarded_tiles      34 x 30 x 3
-            - self._private_open_tiles          --
-            - self._dora_indicators             34 x 5
-            - self._round_name                  one hot encoding 16length (4e, 4s, ...)
-            - self._player_scores               scale from 0-1 where 0=0 and 1=100.000  [0.25, 0.25, 0.25, 0.25]
-        """
+        # features
         self._private_tiles = round["hands"][self._player_idx]
         self._private_discarded_tiles = self._discarded_tiles[self._player_idx]
         self._others_discarded_tiles = self._discarded_tiles[:self._player_idx] + self._discarded_tiles[self._player_idx + 1:]
@@ -286,9 +301,24 @@ class PlayerObservableState:
         self._player_scores = player_scores
         self._self_wind = wind
         self._aka_doras_in_hand = 0
-        self._others_riichi_status = self._riichi_status[:self._player_idx] + self._riichi_status[self._player_idx + 1:]
+        # self._others_riichi_status = self._riichi_status[:self._player_idx] + self._riichi_status[self._player_idx + 1:]
 
         self.update_aka_dora_count_in_hand()
+
+    def to_features_list(self):
+        return [
+            self._private_tiles,
+            self._private_discarded_tiles,
+            self._others_discarded_tiles,
+            self._private_open_tiles,
+            self._others_open_tiles,
+            self._dora_indicators,
+            self._round_name,
+            self._player_scores,
+            self._self_wind,
+            self._aka_doras_in_hand,
+            self._riichi_status[:self._player_idx] + self._riichi_status[self._player_idx+1:]
+        ]
 
     def update_aka_dora_count_in_hand(self):
         aka_doras = ["5m0", "5s0", "5p0"]
@@ -296,7 +326,7 @@ class PlayerObservableState:
         aka_dora_count_private = sum([1 if (i in aka_doras) else 0 for i in self._private_tiles])
         aka_dora_count_open = sum([1 if (i in aka_doras) else 0 for i in self._private_open_tiles])
 
-        self._aka_doras_in_hand =  aka_dora_count_private + aka_dora_count_open
+        self._aka_doras_in_hand = aka_dora_count_private + aka_dora_count_open
 
     def get_score(self):
         return self._player_scores[self._player_idx]
@@ -507,6 +537,7 @@ class PlayerObservableState:
 
     def __str__(self):
         return (
+            "---------------------------------------\n"
             f"_private_tiles: {sort_hand(self._private_tiles)}\n"
             f"_private_discarded_tiles: {self._private_discarded_tiles}\n"
             f"_others_discarded_tiles: {self._others_discarded_tiles}\n"
@@ -516,7 +547,8 @@ class PlayerObservableState:
             f"_player_scores: {self._player_scores}\n"
             f"_self_wind: {self._self_wind}\n"
             f"_aka_doras_in_hand: {self._aka_doras_in_hand}\n"
-            f"_others_riichi_status: {self._others_riichi_status}\n"
+            f"_riichi_status: {self._riichi_status}\n"
+            "---------------------------------------\n"
         )
 
 def sort_hand(tiles):
@@ -556,9 +588,10 @@ chii_combinations = {
 def main(logs_dir):
     game = Game('DEFAULT')
 
+    # todo use glob to check all files in subfolders at ../tenhou-logs/xml-logs/
     log_paths = [logs_dir + f for f in os.listdir(logs_dir)]
     for log_path in log_paths:
-        print(log_path)
+        logging.info(log_path)
 
         game.decode(open(log_path))
         game_data = game.asdata()
@@ -567,10 +600,12 @@ def main(logs_dir):
 
         parser.get_nn_input()
 
-        break
+        # break
         
 
 if __name__ == '__main__':
+    logging.basicConfig(level=LOGGING_LEVEL)
+
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
 
