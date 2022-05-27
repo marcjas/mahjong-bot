@@ -1,62 +1,51 @@
+import sys
+import time
+import os
+import logging
+import csv
 import argparse
+import pickle
+from tqdm import tqdm
 from copy import deepcopy
 import re
 from typing import Dict
-from xmlrpc.client import Boolean
-from TenhouDecoder import Game
-import os
-import sys
-import logging
-import csv
-import time
+import glob 
 
+from TenhouDecoder import Game
 
 LOGGING_LEVEL = logging.INFO
 
-GET_CHII_MODEL_INPUT        = True 
-GET_PON_MODEL_INPUT         = True 
-GET_KAN_MODEL_INPUT         = True 
-GET_RIICHI_MODEL_INPUT      = True 
-GET_DISCARD_MODEL_INPUT     = True
-
 class GameLogParser:
-    states = [[], [], [], [], []]
-    actions = [[], [], [], [], []]
-
     def __init__(self, data: Dict):
         self._data = data
         self._players = data["players"]
         self._rounds = data["rounds"]
 
-    def get_nn_input(self, export_to_csv=True):
+    def get_nn_input(self, get_chii_model_input=True, get_pon_model_input=True, get_kan_model_input=True, get_riichi_model_input=True, get_discard_model_input=True):
         player_scores = [250, 250, 250, 250]
-
         for round in self._rounds:
             round_state = RoundState(round, player_scores)
             for event_idx, event in enumerate(round["events"]):
-                if GET_DISCARD_MODEL_INPUT:
+                if get_discard_model_input:
                     self.get_discard_model_data(round_state, round, event)
 
                 round_state.update_state(event)
 
-                if GET_CHII_MODEL_INPUT:
+                if get_chii_model_input:
                     self.get_chii_model_data(round_state, round, event, event_idx)
 
-                if GET_PON_MODEL_INPUT:
+                if get_pon_model_input:
                     self.get_pon_model_data(round_state, round, event, event_idx)
 
-                if GET_KAN_MODEL_INPUT:
+                if get_kan_model_input:
                     self.get_kan_model_data(round_state, round, event, event_idx)
 
-                if GET_RIICHI_MODEL_INPUT:
+                if get_riichi_model_input:
                     self.get_riichi_model_data(round_state, round, event)
 
             player_scores = self.update_player_scores(round, player_scores, round["deltas"])
 
             logging.debug(f'{round["round"]} | scores={player_scores}')
-        
-        if export_to_csv:
-            self.export_to_csv()
 
     def get_chii_model_data(self, round_state, round, event, event_idx):
         if event["type"] == "Discard":
@@ -78,8 +67,8 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chi" and next_event["player"] == player_idx:
                     did_chii = True
 
-                self.states[0].append(round_state._player_states[player_idx])
-                self.actions[0].append(did_chii)
+                batch_states[0].append(round_state._player_states[player_idx])
+                batch_actions[0].append(int(did_chii))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
 
@@ -102,8 +91,8 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "pon" and next_event["player"] == player_idx:
                         did_pon = True
 
-                    self.states[1].append(round_state._player_states[player_idx])
-                    self.actions[1].append(did_pon)
+                    batch_states[1].append(round_state._player_states[player_idx])
+                    batch_actions[1].append(int(did_pon))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
 
@@ -122,8 +111,8 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chakan" and next_event["player"] == player_idx:
                     did_chakan = True
 
-                self.states[2].append(round_state._player_states[player_idx])
-                self.actions[2].append(did_chakan)
+                batch_states[2].append(round_state._player_states[player_idx])
+                batch_actions[2].append(int(did_chakan))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
 
@@ -145,8 +134,8 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "kan" and next_event["player"] == player_idx:
                         did_kan = True
 
-                    self.states[2].append(round_state._player_states[player_idx])
-                    self.actions[2].append(did_kan)
+                    batch_states[2].append(round_state._player_states[player_idx])
+                    batch_actions[2].append(int(did_kan))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
 
@@ -162,8 +151,8 @@ class GameLogParser:
                     if round_state._riichis_dict[player_idx] == turn:
                         did_riichi = True
                 
-                self.states[3].append(round_state._player_states[player_idx])
-                self.actions[3].append(did_riichi)
+                batch_states[3].append(round_state._player_states[player_idx])
+                batch_actions[3].append(int(did_riichi))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
 
@@ -173,8 +162,8 @@ class GameLogParser:
             if round_state._others_riichi_status[player_idx] == 1:
                 return
 
-            self.states[4].append(round_state._player_states[player_idx])
-            self.actions[4].append(event["tile"])
+            batch_states[4].append(round_state._player_states[player_idx])
+            batch_actions[4].append(event["tile"])
 
             logging.debug(f'{round["round"]} | player{player_idx}, turn={round_state._player_states[player_idx]._turn + 1}, discard={event["tile"]}')
 
@@ -188,27 +177,6 @@ class GameLogParser:
             new_scores[player_idx] -= 10
 
         return new_scores
-
-    def export_to_csv(self):
-        for i, (states, actions) in enumerate(zip(self.states, self.actions)):
-            actions = list(map(lambda a: int(a) if a in [0,1,2,3] else a[0:2], actions)) 
-
-            match i:
-                case 0: csv_file_name = "../data/model_data/chii_data.csv"
-                case 1: csv_file_name = "../data/model_data/pon_data.csv"
-                case 2: csv_file_name = "../data/model_data/kan_data.csv"
-                case 3: csv_file_name = "../data/model_data/riichi_data.csv"
-                case 4: csv_file_name = "../data/model_data/discard_data.csv"
-
-            # with open(csv_file_name, mode="a+") as csv_file:
-            with open(csv_file_name, mode="w") as csv_file:
-                writer = csv.writer(csv_file, delimiter=',')
-                for state, action in zip(states, actions):
-                    row = [f for f in state.to_features_list()]
-                    row.append(action)
-                    writer.writerow(row)
-
-        logging.debug(time.time())
 
 class RoundState:
     def __init__(self, round, player_scores):
@@ -231,7 +199,7 @@ class RoundState:
         self._player_states = [self._p0_state, self._p1_state, self._p2_state, self._p3_state]
 
     def get_player_wind(self, player_idx, dealer_idx):
-        winds = ["east", "south", "west", "north"]
+        winds = ["東", "南", "西", "北"]
         return winds[(player_idx - dealer_idx) % 4]
 
     def update_state(self, event):
@@ -290,18 +258,20 @@ class PlayerState:
         self._riichi_status = riichi_status
         self._is_open_hand = False
 
+        # right, opposite, left
+        self._others_order = [((self._player_idx+i+1) % 4) for i in range(3)]
+
         # features
         self._private_tiles = round["hands"][self._player_idx]
         self._private_discarded_tiles = self._discarded_tiles[self._player_idx]
-        self._others_discarded_tiles = self._discarded_tiles[:self._player_idx] + self._discarded_tiles[self._player_idx + 1:]
+        self._others_discarded_tiles = [self._discarded_tiles[i] for i in self._others_order]
         self._private_open_tiles = self._open_tiles[self._player_idx] 
-        self._others_open_tiles = self._open_tiles[:self._player_idx] + self._open_tiles[self._player_idx + 1:]
+        self._others_open_tiles = [self._open_tiles[i] for i in self._others_order]
         self._dora_indicators = dora_indicators
         self._round_name = self._round_info[0]
-        self._player_scores = player_scores
+        self._player_scores = [player_scores[self._player_idx]] + [player_scores[i] for i in self._others_order]
         self._self_wind = wind
         self._aka_doras_in_hand = 0
-        # self._others_riichi_status = self._riichi_status[:self._player_idx] + self._riichi_status[self._player_idx + 1:]
 
         self.update_aka_dora_count_in_hand()
 
@@ -317,7 +287,7 @@ class PlayerState:
             self._player_scores,
             self._self_wind,
             self._aka_doras_in_hand,
-            self._riichi_status[:self._player_idx] + self._riichi_status[self._player_idx+1:]
+            [self._riichi_status[i] for i in self._others_order]
         ]
 
     def update_aka_dora_count_in_hand(self):
@@ -352,7 +322,7 @@ class PlayerState:
 
         self._open_tiles[self._player_idx].append(tiles)
 
-    def can_chii(self, tile) -> Boolean:
+    def can_chii(self, tile):
         number = tile[0:1]
         suit = tile[1:2]
 
@@ -372,7 +342,7 @@ class PlayerState:
 
         return False 
 
-    def can_pon(self, tile) -> Boolean:
+    def can_pon(self, tile):
         transformed_hand = self.transform_hand(self._private_tiles)
 
         tile = tile[0:2]
@@ -383,7 +353,7 @@ class PlayerState:
 
         return False
 
-    def can_chakan(self) -> Boolean:
+    def can_chakan(self):
         transformed_hand = self.transform_hand(self._private_tiles)
 
         for tile_cnt in transformed_hand:
@@ -393,7 +363,7 @@ class PlayerState:
         return False
         
 
-    def can_kan(self, tile) -> Boolean:
+    def can_kan(self, tile):
         transformed_hand = self.transform_hand(self._private_tiles)
 
         tile = tile[0:2]
@@ -404,7 +374,7 @@ class PlayerState:
 
         return False
 
-    def can_riichi(self) -> Boolean:
+    def can_riichi(self):
         if self._player_scores[self._player_idx] < 10:
             return False
 
@@ -585,23 +555,98 @@ chii_combinations = {
     "9": ["78"],
 }
 
+batch_size = 1000 # games
+batch_states = [[], [], [], [], []]
+batch_actions = [[], [], [], [], []]
+
+MAX_CHII_DATA = 750000 
+MAX_PON_DATA = 750000 
+MAX_KAN_DATA = 200000 
+MAX_RIICHI_DATA = 300000
+MAX_DISCARD_DATA = 1000000
+MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
+
+
+def export_to_csv():
+    print("Exporting to csv...")
+    
+    metadata = get_metadata()
+    for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
+        if metadata[i] >= MAX_DATA[i]:
+            continue
+
+        match i:
+            case 0: csv_file_name = "../data/model_data/chii_data.csv"
+            case 1: csv_file_name = "../data/model_data/pon_data.csv"
+            case 2: csv_file_name = "../data/model_data/kan_data.csv"
+            case 3: csv_file_name = "../data/model_data/riichi_data.csv"
+            case 4: csv_file_name = "../data/model_data/discard_data.csv"
+
+        with open(csv_file_name, mode="a+") as csv_file:
+            writer = csv.writer(csv_file, delimiter=',')
+            for state, action in zip(states, actions):
+                if metadata[i] >= MAX_DATA[i]:
+                    break
+                row = [f for f in state.to_features_list()]
+                row.append(action)
+                writer.writerow(row)
+                metadata[i] += 1
+
+    update_metadata(metadata)
+    print(f"rows in csv-files: {metadata}")
+    print("Finished exporting")
+
+def get_metadata():
+    try:
+        metadata = pickle.load(open("metadata.pickle", "rb"))
+    except (OSError, IOError) as error:
+        metadata = [0, 0, 0, 0, 0]
+        pickle.dump(metadata, open("metadata.pickle", "wb"))
+
+    return metadata
+
+def update_metadata(new_metadata):
+    pickle.dump(new_metadata, open("metadata.pickle", "wb"))
+
 def main(logs_dir):
     game = Game('DEFAULT')
+    
+    metadata = get_metadata()
+    print(f"rows in csv-files: {metadata}")
+    if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
+        print("Max data...")
+        return 
 
-    # todo use glob to check all files in subfolders at ../tenhou-logs/xml-logs/
-    log_paths = [logs_dir + f for f in os.listdir(logs_dir)]
-    for log_path in log_paths:
-        logging.info(log_path)
+    log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
+    if len(log_paths) == 0:
+        print("Found no logs...")
+        sys.exit(-1)
+        return
 
-        game.decode(open(log_path))
-        game_data = game.asdata()
+    for i in range(0, len(log_paths), batch_size):
+        batch = log_paths[i:i+batch_size] 
 
-        parser = GameLogParser(game_data) 
+        metadata = get_metadata()
+        if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
+            print("Finished collecting all data...")
+            break
 
-        parser.get_nn_input()
+        for log_path in tqdm(batch):
+            game.decode(open(log_path))
+            game_data = game.asdata()
 
-        # break
-        
+            parser = GameLogParser(game_data)
+
+            get_data = [False if metadata[x] >= MAX_DATA[x] else True for x in range(5)]
+            parser.get_nn_input(get_data[0], get_data[1], get_data[2], get_data[3], get_data[4])
+
+        export_to_csv()
+
+        global batch_states 
+        global batch_actions 
+
+        batch_states = [[], [], [], [], []]
+        batch_actions = [[], [], [], [], []]
 
 if __name__ == '__main__':
     logging.basicConfig(level=LOGGING_LEVEL)
