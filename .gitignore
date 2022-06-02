@@ -1,4 +1,3 @@
 __pycache__/
-/notes.txt
-notes.txt
-models/*
+data/tenhou-logs/*
+data/model_data/*
