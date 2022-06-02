@@ -6,6 +6,7 @@ import cv2
 from imageio.v2 import imread
 import io
 import read_board
+import sys
 
 tenhou_id = "ID57255B6D-m3eZdhEG"
 tenhou_url = "https://tenhou.net/3/"
@@ -45,17 +46,19 @@ def read(driver):
 
     board = decode_canvas(driver, canvases[1])
     board = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
-    resized = False
     if board.shape[0] != 545 and board[1] != 600:
-        print("Window size was changed. Falling back to non-precise discard pile cropping.")
-        board = cv2.resize(board, (600, 545), interpolation=cv2.INTER_LINEAR)
-        resized = True
+        print("Window size was changed. Please restart the program")
+        #board = cv2.resize(board, (600, 545), interpolation=cv2.INTER_LINEAR)
+        driver.close()
+        sys.exit()
     player_tiles = read_board.get_player_tiles(board)
     print(' '.join(player_tiles))
-    discarded_tiles = read_board.get_discarded_by_scan(board) if resized else read_board.get_discarded(board)
+    discarded_tiles = read_board.get_discarded(board)
     print("Discarded:")
     for i in range(4):
         print(' '.join(discarded_tiles[i]))
+    doras = read_board.get_doras(board)
+    print("Doras:", ' '.join(doras))
 
 def save(driver):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")
