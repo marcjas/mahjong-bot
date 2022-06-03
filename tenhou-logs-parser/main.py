@@ -10,6 +10,8 @@ from copy import deepcopy
 import re
 from typing import Dict
 import glob 
+import numpy as np
+import torch
 
 from TenhouDecoder import Game
 
@@ -290,6 +292,126 @@ class PlayerState:
             [self._riichi_status[i] for i in self._others_order]
         ]
 
+
+    def to_processed_features_list(self):
+        procesed_list = []
+
+        # self._private_tiles
+        private_tiles = [0] * 34 * 4
+        mapped_private_tiles = list(map(lambda x: x[0:2], self._private_tiles))
+        for tile in mapped_private_tiles:
+            offset = 0
+            idx = tiles.index(tile)
+            while private_tiles[idx + offset] == 1:
+                offset += 34
+                if private_tiles[idx + offset] == 0:
+                    break
+            private_tiles[idx + offset] = 1
+
+
+        print(len(private_tiles))
+
+        # self._private_discarded_tiles
+        private_discarded_tiles = [0] * 34 * 30
+        mapped_private_discarded_tiles = list(map(lambda x: x[0:2], self._private_discarded_tiles))
+        for i, tile in enumerate(mapped_private_discarded_tiles):
+            idx = tiles.index(tile)
+            private_discarded_tiles[idx + (i * 32)] = 1
+
+        print(len(private_discarded_tiles))
+
+        # self._others_discarded_tiles
+        private_others_discarded_tiles = [0] * 34 * 30 * 3
+        for player_i, discarded_tiles in enumerate(self._others_discarded_tiles):
+            mapped_player_discarded_tiles = list(map(lambda x: x[0:2], discarded_tiles)) 
+            for i, tile in enumerate(mapped_player_discarded_tiles):
+                idx = tiles.index(tile)
+                private_others_discarded_tiles[idx + (i * 32) + (player_i * 34 * 30)] = 1
+
+        print(len(private_others_discarded_tiles))
+
+        # self._private_open_tiles
+        private_open_tiles = [0] * 34 * 4
+        for i, meld in enumerate(self._private_open_tiles):
+            mapped_meld = list(map(lambda x: x[0:2], meld))
+            for tile in mapped_meld:
+                idx = tiles.index(tile)
+                private_open_tiles[idx + (i * 32)] = 1
+
+        print(len(private_open_tiles))
+
+        # self._others_open_tiles
+        others_open_tiles = [0] * 34 * 4 * 3
+        for player_i, player_melds in enumerate(self._others_open_tiles):
+            for i, meld in enumerate(player_melds):
+                mapped_meld = list(map(lambda x: x[0:2], meld))
+                for tile in mapped_meld:
+                    idx = tiles.index(tile)
+                    others_open_tiles[idx + (i * 32 + (player_i * 34 * 4))] = 1
+
+        print(len(others_open_tiles))
+
+        # self._dora_indicators
+        dora_indicators = [0] * 34 * 4
+        mapped_dora_indicators = list(map(lambda x: x[0:2], self._dora_indicators))
+        for tile in mapped_dora_indicators:
+            offset = 0
+            idx = tiles.index(tile)
+            while private_tiles[idx + offset] == 1:
+                offset += 34
+                if private_tiles[idx + offset] == 0:
+                    break
+            dora_indicators[idx + offset] = 1
+
+        print(len(dora_indicators))
+
+        # self._round_name
+        round_name = [0] * 12
+        winds = ["東", "南", "西", "北"]
+        round_wind = self._round_name[0]
+        round_number = int(self._round_name[1])
+        round_name[winds.index(round_wind) + round_number]
+
+        print(len(round_name))
+
+        # self._player_scores
+        player_scores = [0] * 4
+        for i, player_score in enumerate(self._player_scores):
+            if player_score >= 1000:
+                player_scores[i] = 1
+                continue
+            elif player_score <= 1000:
+                player_scores[i] = 0
+                continue
+            player_scores[i] = player_score / 1000
+
+        # self._self_wind
+        self_wind = [0] * 4
+        winds = ["東", "南", "西", "北"]
+        self_wind[winds.index(self._self_wind)] = 1
+
+        # self._aka_doras_in_hand
+        aka_doras_in_hand = [0] * 4
+        aka_doras_in_hand[self._aka_doras_in_hand] = 1
+
+        # self._riichi_status
+        others_riichi_status = [self._riichi_status[i] for i in self._others_order]
+
+
+        print(len(private_tiles) + len(private_discarded_tiles) + len(private_others_discarded_tiles) + len(private_open_tiles) + len(others_open_tiles) + len(dora_indicators) + len(round_name))
+
+        return private_tiles + \
+               private_discarded_tiles + \
+               private_others_discarded_tiles + \
+               private_open_tiles + \
+               others_open_tiles + \
+               dora_indicators + \
+               round_name + \
+               player_scores + \
+               self_wind + \
+               aka_doras_in_hand + \
+               others_riichi_status
+
     def update_aka_dora_count_in_hand(self):
         aka_doras = ["5m0", "5s0", "5p0"]
 
@@ -329,7 +451,7 @@ class PlayerState:
         if suit == "w" or suit == "d":
             return False
 
-        transformed_hand = self.transform_hand(self._private_tiles)
+        transformed_hand = transform_hand(self._private_tiles)
 
         offset = 0
         if suit == "p": offset = 9
@@ -343,7 +465,7 @@ class PlayerState:
         return False 
 
     def can_pon(self, tile):
-        transformed_hand = self.transform_hand(self._private_tiles)
+        transformed_hand = transform_hand(self._private_tiles)
 
         tile = tile[0:2]
         tile_idx = tiles.index(tile)
@@ -354,7 +476,7 @@ class PlayerState:
         return False
 
     def can_chakan(self):
-        transformed_hand = self.transform_hand(self._private_tiles)
+        transformed_hand = transform_hand(self._private_tiles)
 
         for tile_cnt in transformed_hand:
             if tile_cnt == 4:
@@ -364,7 +486,7 @@ class PlayerState:
         
 
     def can_kan(self, tile):
-        transformed_hand = self.transform_hand(self._private_tiles)
+        transformed_hand = transform_hand(self._private_tiles)
 
         tile = tile[0:2]
         tile_idx = tiles.index(tile)
@@ -384,7 +506,7 @@ class PlayerState:
         if self._is_open_hand == True:
             return False
 
-        transformed_hand = self.transform_hand(deepcopy(self._private_tiles))
+        transformed_hand = transform_hand(deepcopy(self._private_tiles))
 
         m_tiles = transformed_hand[0:9]
         p_tiles = transformed_hand[9:18]
@@ -495,15 +617,7 @@ class PlayerState:
 
         return (mentsu_count, pair_count, 0, isolated_count)
         
-    def transform_hand(self, hand):
-        new_hand = [0] * 34
-        mapped_hand = list(map(lambda x: x[0:2], hand))
-
-        for tile in mapped_hand:
-            idx = tiles.index(tile)
-            new_hand[idx] += 1
-
-        return new_hand
+    
 
     def __str__(self):
         return (
@@ -511,6 +625,7 @@ class PlayerState:
             f"_private_tiles: {sort_hand(self._private_tiles)}\n"
             f"_private_discarded_tiles: {self._private_discarded_tiles}\n"
             f"_others_discarded_tiles: {self._others_discarded_tiles}\n"
+            f"_private_open_tiles: {self._private_open_tiles}\n"
             f"_others_open_tiles: {self._others_open_tiles}\n"
             f"_dora_indicators: {self._dora_indicators}\n"
             f"_round_name: {self._round_name}\n"
@@ -520,6 +635,16 @@ class PlayerState:
             f"_riichi_status: {self._riichi_status}\n"
             "---------------------------------------\n"
         )
+
+def transform_hand(hand):
+    new_hand = [0] * 34
+    mapped_hand = list(map(lambda x: x[0:2], hand))
+
+    for tile in mapped_hand:
+        idx = tiles.index(tile)
+        new_hand[idx] += 1
+
+    return new_hand
 
 def sort_hand(tiles):
     return sorted(tiles, key = lambda x: (x[1], x[0]))
@@ -555,46 +680,51 @@ chii_combinations = {
     "9": ["78"],
 }
 
-batch_size = 1000 # games
+batch_size = 50 # game
 batch_states = [[], [], [], [], []]
 batch_actions = [[], [], [], [], []]
 
-MAX_CHII_DATA = 750000 
-MAX_PON_DATA = 750000 
-MAX_KAN_DATA = 200000 
-MAX_RIICHI_DATA = 300000
-MAX_DISCARD_DATA = 1000000
+# MAX_CHII_DATA = 750000 
+# MAX_PON_DATA = 750000 
+# MAX_KAN_DATA = 200000 
+# MAX_RIICHI_DATA = 300000
+# MAX_DISCARD_DATA = 1000000
+MAX_CHII_DATA = 100
+MAX_PON_DATA = 100
+MAX_KAN_DATA = 100
+MAX_RIICHI_DATA = 100
+MAX_DISCARD_DATA = 100
 MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
 
 
-def export_to_csv():
-    print("Exporting to csv...")
+# def export_to_csv():
+#     print("Exporting to csv...")
     
-    metadata = get_metadata()
-    for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
-        if metadata[i] >= MAX_DATA[i]:
-            continue
+#     metadata = get_metadata()
+#     for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
+#         if metadata[i] >= MAX_DATA[i]:
+#             continue
 
-        match i:
-            case 0: csv_file_name = "../data/model_data/chii_data.csv"
-            case 1: csv_file_name = "../data/model_data/pon_data.csv"
-            case 2: csv_file_name = "../data/model_data/kan_data.csv"
-            case 3: csv_file_name = "../data/model_data/riichi_data.csv"
-            case 4: csv_file_name = "../data/model_data/discard_data.csv"
+#         match i:
+#             case 0: csv_file_name = "../data/model_data/chii_data.csv"
+#             case 1: csv_file_name = "../data/model_data/pon_data.csv"
+#             case 2: csv_file_name = "../data/model_data/kan_data.csv"
+#             case 3: csv_file_name = "../data/model_data/riichi_data.csv"
+#             case 4: csv_file_name = "../data/model_data/discard_data.csv"
 
-        with open(csv_file_name, mode="a+") as csv_file:
-            writer = csv.writer(csv_file, delimiter=',')
-            for state, action in zip(states, actions):
-                if metadata[i] >= MAX_DATA[i]:
-                    break
-                row = [f for f in state.to_features_list()]
-                row.append(action)
-                writer.writerow(row)
-                metadata[i] += 1
+#         with open(csv_file_name, mode="a+") as csv_file:
+#             writer = csv.writer(csv_file, delimiter=',')
+#             for state, action in zip(states, actions):
+#                 if metadata[i] >= MAX_DATA[i]:
+#                     break
+#                 row = [f for f in state.to_features_list()]
+#                 row.append(action)
+#                 writer.writerow(row)
+#                 metadata[i] += 1
 
-    update_metadata(metadata)
-    print(f"rows in csv-files: {metadata}")
-    print("Finished exporting")
+#     update_metadata(metadata)
+#     print(f"rows in csv-files: {metadata}")
+#     print("Finished exporting")
 
 def get_metadata():
     try:
@@ -608,20 +738,61 @@ def get_metadata():
 def update_metadata(new_metadata):
     pickle.dump(new_metadata, open("metadata.pickle", "wb"))
 
+def export():
+    metadata = get_metadata()
+    for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
+        match i:
+            case 0: 
+                memmap_file_name = "../data/test/chii_data.dat"
+                vector_length = 4923 + 1
+            case 1: 
+                memmap_file_name = "../data/test/pon_data.dat"
+                vector_length = 4923 + 1
+            case 2: 
+                memmap_file_name = "../data/test/kan_data.dat"
+                vector_length = 4923 + 1
+            case 3: 
+                memmap_file_name = "../data/test/riichi_data.dat"
+                vector_length = 4923 + 1
+            case 4: 
+                memmap_file_name = "../data/test/discard_data.dat"
+                vector_length = 4923 + 34
+            case _: sys.exit(-1)
+
+        # shared=True allows us to save the tensor to disk as we perform in place modifications to it
+        storage = torch.FloatStorage.from_file(memmap_file_name, shared=True, size=MAX_DATA[i] * vector_length)
+        memmap = torch.FloatTensor(storage).reshape(MAX_DATA[i], vector_length)
+
+        for state, action in zip(states, actions):
+            if metadata[i] >= MAX_DATA[i]:
+                break
+            if i == 4:
+                print(state)
+                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + transform_hand([action]))
+            else:
+                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + transform_hand([action]))
+
+            metadata[i] += 1
+
+    update_metadata(metadata)
+    print(f".dat lengths: {metadata}")
+    print("Finished exporting")
+
+
 def main(logs_dir):
     game = Game('DEFAULT')
     
     metadata = get_metadata()
+    print(metadata)
     print(f"rows in csv-files: {metadata}")
     if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
         print("Max data...")
-        return 
+        sys.exit(-1)
 
     log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
     if len(log_paths) == 0:
         print("Found no logs...")
         sys.exit(-1)
-        return
 
     for i in range(0, len(log_paths), batch_size):
         batch = log_paths[i:i+batch_size] 
@@ -640,13 +811,75 @@ def main(logs_dir):
             get_data = [False if metadata[x] >= MAX_DATA[x] else True for x in range(5)]
             parser.get_nn_input(get_data[0], get_data[1], get_data[2], get_data[3], get_data[4])
 
-        export_to_csv()
+        export()
 
         global batch_states 
         global batch_actions 
 
         batch_states = [[], [], [], [], []]
         batch_actions = [[], [], [], [], []]
+
+# def main(logs_dir):
+#     game = Game("DEFAULT")
+
+#     log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
+#     cnt = 0
+#     for log_path in tqdm(log_paths):
+#         game.decode(open(log_path))
+#         game_data = game.asdata()
+
+#         parser = GameLogParser(game_data)
+#         parser.get_nn_input()
+
+#         cnt += 1
+#         if cnt == 10:
+#             break
+
+#     export()
+
+
+
+
+
+# def main(logs_dir):
+#     game = Game('DEFAULT')
+    
+#     metadata = get_metadata()
+#     print(metadata)
+#     print(f"rows in csv-files: {metadata}")
+#     if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
+#         print("Max data...")
+#         sys.exit(-1)
+
+#     log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
+#     if len(log_paths) == 0:
+#         print("Found no logs...")
+#         sys.exit(-1)
+
+#     for i in range(0, len(log_paths), batch_size):
+#         batch = log_paths[i:i+batch_size] 
+
+#         metadata = get_metadata()
+#         if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
+#             print("Finished collecting all data...")
+#             break
+
+#         for log_path in tqdm(batch):
+#             game.decode(open(log_path))
+#             game_data = game.asdata()
+
+#             parser = GameLogParser(game_data)
+
+#             get_data = [False if metadata[x] >= MAX_DATA[x] else True for x in range(5)]
+#             parser.get_nn_input(get_data[0], get_data[1], get_data[2], get_data[3], get_data[4])
+
+#         export_to_csv()
+
+#         global batch_states 
+#         global batch_actions 
+
+#         batch_states = [[], [], [], [], []]
+#         batch_actions = [[], [], [], [], []]
 
 if __name__ == '__main__':
     logging.basicConfig(level=LOGGING_LEVEL)

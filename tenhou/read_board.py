@@ -6,10 +6,10 @@ private_tile_model = read_tile.create_private_tile_model()
 print("Private tile model finished")
 discard_tile_model = read_tile.create_discard_tile_model()
 #discard_h_tile_model, discard_v_tile_model = read_tile.create_discard_tile_models()
-print("Discard tile model finished")
+print("Discard tile models finished")
 
 def main():
-    board = cv2.imread("riichi9.png", cv2.IMREAD_COLOR)
+    board = cv2.imread("board.png", cv2.IMREAD_COLOR)
     board = cv2.resize(board, (600, 545), interpolation=cv2.INTER_LINEAR)
 
     tiles = get_player_tiles(board)
@@ -83,71 +83,25 @@ def get_player_tiles(board):
 def get_discarded(board, save_img=False):
     # player, right, opposite, left
     discarded = [
-        get_discard_pile(board, 227, 312, owner=0, save_img=save_img),
-        get_discard_pile(board, 377, 290, owner=1, save_img=save_img),
-        get_discard_pile(board, 352, 158, owner=2, save_img=save_img),
-        get_discard_pile(board, 194, 185, owner=3, save_img=save_img)
+        get_discard_pile(board, 227, 312,  25,  28, 21, 24, owner=0, save_img=save_img),
+        get_discard_pile(board, 377, 290,  33, -21, 29, 19, owner=1, save_img=save_img),
+        get_discard_pile(board, 352, 158, -25, -28, 21, 24, owner=2, save_img=save_img),
+        get_discard_pile(board, 194, 185, -33,  21, 29, 19, owner=3, save_img=save_img)
     ]
 
     return discarded
 
-def get_discard_pile(board, x, y, owner=0, save_img=False):
-    tile_widths  = [25,  33, -25, -33]
-    tile_heights = [28, -21, -28,  21]
-    icon_widths  = [21,  29]
-    icon_heights = [24,  19]
-
-    tile_width  = tile_widths[owner]
-    tile_height = tile_heights[owner]
-    icon_width  = icon_widths[owner % 2]
-    icon_height = icon_heights[owner % 2]
-
-    base_x = x
-    base_y = y
-    riichi_index = -1
-
+def get_discard_pile(board, x, y, tile_width, tile_height, icon_width, icon_height, owner=0, save_img=False):
     tile_images = []
     original_tile_images = []
     while True:
-        riichi = False
-        tile_img = None
-        if sum(board[y, x]) < 440 or \
-           sum(board[y+icon_height-1, x]) < 440 or \
-           sum(board[y, x+icon_width-1]) < 440 or \
-           sum(board[y+icon_height-1, x+icon_width-1]) < 440:
-            # Found no regular tile
-            rx = x
-            ry = y
-            if owner == 0:
-                ry += (tile_height - tile_heights[3]) - 1
-            elif owner == 1:
-                rx += (tile_width - tile_widths[0])
-            elif owner == 2:
-                rx -= (tile_width - tile_widths[3])
-                ry -= 1
-            ricon_width  = icon_widths[(owner + 1) % 2]
-            ricon_height = icon_heights[(owner + 1) % 2]
-            if sum(board[ry, rx]) < 440 or \
-               sum(board[ry+ricon_height-1, rx]) < 440 or \
-               sum(board[ry, rx + ricon_width-1]) < 440 or \
-               sum(board[ry+ricon_height-1, rx+ricon_width-1]) < 440:
-                    # Found no riichi tile
-                    tile_img = board[ry:(ry+ricon_height), rx:(rx+ricon_width)]
-                    break
-            else:
-                # Riichii tile
-                riichi = True
-                if riichi_index >= 0:
-                    print("Found two riichi tiles, this is impossible.")
-                    continue
-                riichi_index = len(tile_images)
-                print("Riichi!", len(tile_images))
-                tile_img = board[ry:(ry+ricon_height), rx:(rx+ricon_width)]
-                tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
-        else:
-            # Regular tile
-            tile_img = board[y:(y+icon_height), x:(x+icon_width)]
-        # Processing
+        if sum(board[y, x]) < 10 or \
+           sum(board[y+icon_height, x]) < 10 or \
+           sum(board[y, x + icon_width]) < 10 or \
+           sum(board[y+icon_height, x+icon_width]) < 10:
+            # Found no full tile
+            break
+        tile_img = board[y:(y+icon_height), x:(x+icon_width)]
         if owner == 1:
             tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
         elif owner == 2:
@@ -158,14 +112,14 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
         tile_img = read_tile.preprocess(tile_img)
         tile_images.append(tile_img)
         if owner % 2 == 0:
-            x += tile_widths[(owner + 1) % 4] if riichi else tile_width
+            x += tile_width
             if len(tile_images) <= 12 and len(tile_images) % 6 == 0:
-                x = base_x
+                x -= tile_width * 6
                 y += tile_height
         else:
-            y += tile_heights[(owner + 1) % 4] if riichi else tile_height
+            y += tile_height
             if len(tile_images) <= 12 and len(tile_images) % 6 == 0:
-                y = base_y
+                y -= tile_height * 6
                 x += tile_width
     
     if len(tile_images) > 0:
@@ -176,8 +130,6 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
                 tile_name = discarded[i]
                 file_name = f"data/test/{owner_name}/{tile_name}_{100*(owner+1)+i}.png"
                 cv2.imwrite(file_name, img)
-        if riichi_index >= 0:
-            discarded[riichi_index] += "r"
         return discarded
 
     return []
@@ -329,75 +281,15 @@ def get_discarded_by_scan(board, save_img=False):
     return discarded
 
 def get_doras(board):
-    doras = []
-    doras += get_wall_doras(board, 0)
-    doras += get_wall_doras(board, 1)
-    doras += get_wall_doras(board, 2)
-    doras += get_wall_doras(board, 3)
-    return doras
+    icon_width_v = 21
+    icon_height_v = 24
+    icon_width_h = 29
+    icon_height_v = 19
+    #get_discard_pile(board, 227, 312,  25,  28, 21, 24, owner=0, save_img=save_img),
+    #get_discard_pile(board, 377, 290,  33, -21, 29, 19, owner=1, save_img=save_img),
 
 def get_wall_doras(board, owner=0):
-    icon_width = 21 if owner % 2 == 0 else 29
-    icon_height = 24 if owner % 2 == 0 else 19
-    tile_width = 25 if owner % 2 == 0 else 33
-    tile_height = 28 if owner % 2 == 0 else 21
-    x = [104, 498, 475, 73][owner]
-    y = [409, 389, 52, 77][owner]
-
-    doras = []
-
-    while True:
-        if sum(board[y, x]) < 140 or \
-           sum(board[y+icon_height, x]) < 140 or \
-           sum(board[y, x + icon_width]) < 140 or \
-           sum(board[y+icon_height, x+icon_width]) < 140:
-            # Found no tile
-            match owner:
-                case 0:
-                    x += 1
-                    if x > 510:
-                        break
-                case 1:
-                    y -= 1
-                    if y < 60:
-                        break
-                case 2:
-                    x -= 1
-                    if x < 70:
-                        break
-                case 3:
-                    y += 1
-                    if y > 440:
-                        break
-        else:
-            # Found a tile
-            if owner == 0:
-                x += 2
-            elif owner == 1:
-                y -= 1
-            elif owner == 2:
-                x -= 1
-            tile_img = board[y:(y+icon_height), x:(x+icon_width)]
-            match owner:
-                case 0:
-                    x += tile_width
-                case 1:
-                    tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
-                    y -= tile_height
-                case 2:
-                    tile_img = cv2.rotate(tile_img, cv2.ROTATE_180)
-                    x -= tile_width
-                case 3:
-                    tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    y += tile_height
-            tile_img = read_tile.preprocess(tile_img)
-
-            doras.append(tile_img)
-
-    if len(doras) == 0:
-        return []
-
-    return read_tile.predict(discard_tile_model, doras)
+    x = []
 
 def scan_start(board, from_x, from_y, to_x, to_y, min_value=0):
     while from_x != to_x or from_y != to_y:
