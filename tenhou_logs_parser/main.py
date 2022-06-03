@@ -1,8 +1,5 @@
 import sys
-import time
-import os
 import logging
-import csv
 import argparse
 import pickle
 from tqdm import tqdm
@@ -10,10 +7,9 @@ from copy import deepcopy
 import re
 from typing import Dict
 import glob 
-import numpy as np
 import torch
 
-from TenhouDecoder import Game
+from tenhou_decoder import Game
 
 LOGGING_LEVEL = logging.INFO
 
@@ -294,7 +290,19 @@ class PlayerState:
 
 
     def to_processed_features_list(self):
-        procesed_list = []
+        """
+        34 x 4
+        34 x 30
+        34 x 30 x 3
+        34 x 4
+        34 x 4 x 3
+        34 x 4
+        12
+        4
+        4
+        4
+        3
+        """
 
         # self._private_tiles
         private_tiles = [0] * 34 * 4
@@ -308,17 +316,12 @@ class PlayerState:
                     break
             private_tiles[idx + offset] = 1
 
-
-        print(len(private_tiles))
-
         # self._private_discarded_tiles
         private_discarded_tiles = [0] * 34 * 30
         mapped_private_discarded_tiles = list(map(lambda x: x[0:2], self._private_discarded_tiles))
         for i, tile in enumerate(mapped_private_discarded_tiles):
             idx = tiles.index(tile)
             private_discarded_tiles[idx + (i * 32)] = 1
-
-        print(len(private_discarded_tiles))
 
         # self._others_discarded_tiles
         private_others_discarded_tiles = [0] * 34 * 30 * 3
@@ -328,8 +331,6 @@ class PlayerState:
                 idx = tiles.index(tile)
                 private_others_discarded_tiles[idx + (i * 32) + (player_i * 34 * 30)] = 1
 
-        print(len(private_others_discarded_tiles))
-
         # self._private_open_tiles
         private_open_tiles = [0] * 34 * 4
         for i, meld in enumerate(self._private_open_tiles):
@@ -337,8 +338,6 @@ class PlayerState:
             for tile in mapped_meld:
                 idx = tiles.index(tile)
                 private_open_tiles[idx + (i * 32)] = 1
-
-        print(len(private_open_tiles))
 
         # self._others_open_tiles
         others_open_tiles = [0] * 34 * 4 * 3
@@ -348,8 +347,6 @@ class PlayerState:
                 for tile in mapped_meld:
                     idx = tiles.index(tile)
                     others_open_tiles[idx + (i * 32 + (player_i * 34 * 4))] = 1
-
-        print(len(others_open_tiles))
 
         # self._dora_indicators
         dora_indicators = [0] * 34 * 4
@@ -363,16 +360,12 @@ class PlayerState:
                     break
             dora_indicators[idx + offset] = 1
 
-        print(len(dora_indicators))
-
         # self._round_name
         round_name = [0] * 12
         winds = ["東", "南", "西", "北"]
         round_wind = self._round_name[0]
         round_number = int(self._round_name[1])
         round_name[winds.index(round_wind) + round_number]
-
-        print(len(round_name))
 
         # self._player_scores
         player_scores = [0] * 4
@@ -396,9 +389,6 @@ class PlayerState:
 
         # self._riichi_status
         others_riichi_status = [self._riichi_status[i] for i in self._others_order]
-
-
-        print(len(private_tiles) + len(private_discarded_tiles) + len(private_others_discarded_tiles) + len(private_open_tiles) + len(others_open_tiles) + len(dora_indicators) + len(round_name))
 
         return private_tiles + \
                private_discarded_tiles + \
@@ -650,14 +640,6 @@ def sort_hand(tiles):
     return sorted(tiles, key = lambda x: (x[1], x[0]))
 
 def decode_tile(tile_code):
-    UNICODE_TILES = """
-        🀇 🀈 🀉 🀊 🀋 🀌 🀍 🀎 🀏
-        🀙 🀚 🀛 🀜 🀝 🀞 🀟 🀠 🀡
-        🀐 🀑 🀒 🀓 🀔 🀕 🀖 🀗 🀘
-        🀀 🀁 🀂 🀃 
-        🀆 🀅 🀄
-    """.split()
-
     TILES = """
         1m 2m 3m 4m 5m 6m 7m 8m 9m
         1p 2p 3p 4p 5p 6p 7p 8p 9p
@@ -696,36 +678,6 @@ MAX_RIICHI_DATA = 100
 MAX_DISCARD_DATA = 100
 MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
 
-
-# def export_to_csv():
-#     print("Exporting to csv...")
-    
-#     metadata = get_metadata()
-#     for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
-#         if metadata[i] >= MAX_DATA[i]:
-#             continue
-
-#         match i:
-#             case 0: csv_file_name = "../data/model_data/chii_data.csv"
-#             case 1: csv_file_name = "../data/model_data/pon_data.csv"
-#             case 2: csv_file_name = "../data/model_data/kan_data.csv"
-#             case 3: csv_file_name = "../data/model_data/riichi_data.csv"
-#             case 4: csv_file_name = "../data/model_data/discard_data.csv"
-
-#         with open(csv_file_name, mode="a+") as csv_file:
-#             writer = csv.writer(csv_file, delimiter=',')
-#             for state, action in zip(states, actions):
-#                 if metadata[i] >= MAX_DATA[i]:
-#                     break
-#                 row = [f for f in state.to_features_list()]
-#                 row.append(action)
-#                 writer.writerow(row)
-#                 metadata[i] += 1
-
-#     update_metadata(metadata)
-#     print(f"rows in csv-files: {metadata}")
-#     print("Finished exporting")
-
 def get_metadata():
     try:
         metadata = pickle.load(open("metadata.pickle", "rb"))
@@ -743,19 +695,19 @@ def export():
     for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
         match i:
             case 0: 
-                memmap_file_name = "../data/test/chii_data.dat"
+                memmap_file_name = "../data/model_data/chii_data.dat"
                 vector_length = 4923 + 1
             case 1: 
-                memmap_file_name = "../data/test/pon_data.dat"
+                memmap_file_name = "../data/model_data/pon_data.dat"
                 vector_length = 4923 + 1
             case 2: 
-                memmap_file_name = "../data/test/kan_data.dat"
+                memmap_file_name = "../data/model_data/kan_data.dat"
                 vector_length = 4923 + 1
             case 3: 
-                memmap_file_name = "../data/test/riichi_data.dat"
+                memmap_file_name = "../data/model_data/riichi_data.dat"
                 vector_length = 4923 + 1
             case 4: 
-                memmap_file_name = "../data/test/discard_data.dat"
+                memmap_file_name = "../data/model_data/discard_data.dat"
                 vector_length = 4923 + 34
             case _: sys.exit(-1)
 
@@ -767,11 +719,9 @@ def export():
             if metadata[i] >= MAX_DATA[i]:
                 break
             if i == 4:
-                print(state)
                 memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + transform_hand([action]))
             else:
-                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + transform_hand([action]))
-
+                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [action])
             metadata[i] += 1
 
     update_metadata(metadata)
@@ -783,8 +733,7 @@ def main(logs_dir):
     game = Game('DEFAULT')
     
     metadata = get_metadata()
-    print(metadata)
-    print(f"rows in csv-files: {metadata}")
+    print(f".dat lengths: {metadata}")
     if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
         print("Max data...")
         sys.exit(-1)
@@ -818,68 +767,6 @@ def main(logs_dir):
 
         batch_states = [[], [], [], [], []]
         batch_actions = [[], [], [], [], []]
-
-# def main(logs_dir):
-#     game = Game("DEFAULT")
-
-#     log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
-#     cnt = 0
-#     for log_path in tqdm(log_paths):
-#         game.decode(open(log_path))
-#         game_data = game.asdata()
-
-#         parser = GameLogParser(game_data)
-#         parser.get_nn_input()
-
-#         cnt += 1
-#         if cnt == 10:
-#             break
-
-#     export()
-
-
-
-
-
-# def main(logs_dir):
-#     game = Game('DEFAULT')
-    
-#     metadata = get_metadata()
-#     print(metadata)
-#     print(f"rows in csv-files: {metadata}")
-#     if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
-#         print("Max data...")
-#         sys.exit(-1)
-
-#     log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
-#     if len(log_paths) == 0:
-#         print("Found no logs...")
-#         sys.exit(-1)
-
-#     for i in range(0, len(log_paths), batch_size):
-#         batch = log_paths[i:i+batch_size] 
-
-#         metadata = get_metadata()
-#         if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
-#             print("Finished collecting all data...")
-#             break
-
-#         for log_path in tqdm(batch):
-#             game.decode(open(log_path))
-#             game_data = game.asdata()
-
-#             parser = GameLogParser(game_data)
-
-#             get_data = [False if metadata[x] >= MAX_DATA[x] else True for x in range(5)]
-#             parser.get_nn_input(get_data[0], get_data[1], get_data[2], get_data[3], get_data[4])
-
-#         export_to_csv()
-
-#         global batch_states 
-#         global batch_actions 
-
-#         batch_states = [[], [], [], [], []]
-#         batch_actions = [[], [], [], [], []]
 
 if __name__ == '__main__':
     logging.basicConfig(level=LOGGING_LEVEL)
