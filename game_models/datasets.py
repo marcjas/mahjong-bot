@@ -12,7 +12,7 @@ discard_data_file_path = "../data/model_data/discard_data.dat"
 class ChiiDataset(Dataset):
     def __init__(self):
         self.len = Utils.get_metadata()[0]
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(chii_data_file_path, shared=False, size=self.len* 4924)).reshape(self.len, 4924)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(chii_data_file_path, shared=False, size=100 * 4924)).reshape(100, 4924)
 
     def __len__(self):
         return self.len 
@@ -23,7 +23,7 @@ class ChiiDataset(Dataset):
 class PonDataset(Dataset):
     def __init__(self):
         self.len = Utils.get_metadata()[1]
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(pon_data_file_path, shared=False, size=self.len * 4924)).reshape(self.len, 4924)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(pon_data_file_path, shared=False, size=100 * 4924)).reshape(100, 4924)
     
     def __len__(self):
         return self.len 
@@ -34,7 +34,7 @@ class PonDataset(Dataset):
 class KanDataset(Dataset):
     def __init__(self):
         self.len = Utils.get_metadata()[2]
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(kan_data_file_path, shared=False, size=self.len * 4924)).reshape(self.len, 4924)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(kan_data_file_path, shared=False, size=100 * 4924)).reshape(100, 4924)
     
     def __len__(self):
         return self.len 
@@ -45,7 +45,7 @@ class KanDataset(Dataset):
 class RiichiDataset(Dataset):
     def __init__(self):
         self.len = Utils.get_metadata()[3]
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(riichi_data_file_path, shared=False, size=self.len * 4957)).reshape(self.len, 4957)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(riichi_data_file_path, shared=False, size=100 * 4957)).reshape(100, 4957)
     
     def __len__(self):
         return self.len 
@@ -56,7 +56,7 @@ class RiichiDataset(Dataset):
 class DiscardDataset(Dataset):
     def __init__(self):
         self.len = Utils.get_metadata()[4]
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(discard_data_file_path, shared=False, size=self.len * 4957)).reshape(self.len, 4957)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(discard_data_file_path, shared=False, size=100 * 4957)).reshape(100, 4957)
     
     def __len__(self):
         return self.len 
