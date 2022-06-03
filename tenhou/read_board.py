@@ -1,6 +1,10 @@
 import cv2
 import math
 import read_tile
+import sys
+
+expected_width  = 600
+expected_height = 545
 
 private_tile_model = read_tile.create_private_tile_model()
 print("Private tile model finished")
@@ -8,8 +12,8 @@ discard_tile_model = read_tile.create_discard_tile_model()
 #discard_h_tile_model, discard_v_tile_model = read_tile.create_discard_tile_models()
 print("Discard tile model finished")
 
-def main():
-    board = cv2.imread("riichi9.png", cv2.IMREAD_COLOR)
+def main(filename):
+    board = cv2.imread(f"boards/{filename}.png", cv2.IMREAD_COLOR)
     board = cv2.resize(board, (600, 545), interpolation=cv2.INTER_LINEAR)
 
     tiles = get_player_tiles(board)
@@ -23,6 +27,10 @@ def main():
 
     doras = get_doras(board)
     print("Doras:", ' '.join(doras))
+
+    open_tiles = get_open_tiles(board, save_img=True)
+    for i in range(4):
+        print(open_tiles[i])
 
 def get_player_tiles(board):
     hand_y = math.floor(board.shape[0] * 0.915)
@@ -79,6 +87,130 @@ def get_player_tiles(board):
         images.append(tile_img)
 
     return read_tile.predict(private_tile_model, images)
+
+def get_open_tiles(board, save_img=False):
+    open_tiles = [
+        get_open_tile_pile(board, 577, 488, owner=0, save_img=save_img),
+        get_open_tile_pile(board, 569, 65, owner=1, save_img=save_img),
+        get_open_tile_pile(board, 73, 1, owner=2, save_img=save_img),
+        get_open_tile_pile(board, 2, 373, owner=3, save_img=save_img)
+    ]
+
+    return open_tiles
+
+def get_open_tile_pile(board, x, y, owner=0, save_img=False):
+    tile_widths  = [25,  33, -25, -33]
+    tile_heights = [28, -21, -28,  21]
+    icon_widths  = [21,  29]
+    icon_heights = [24,  19]
+
+    tile_width  = tile_widths[owner]
+    tile_height = tile_heights[owner]
+    icon_width  = icon_widths[owner % 2]
+    icon_height = icon_heights[owner % 2]
+    kan_width   = [0, -18, 0, 47][owner]
+    kan_height  = [-14, 16, 44, 16][owner]
+
+    open_sets = []
+    sideways_index = -1
+
+    tile_images = []
+    set_index = 0
+    closed_kan_index = 0
+    while True:
+        sideways = False
+        kan_tile = (sum(board[y+kan_height, x+kan_width]) > 200)
+        if (sum(board[y+icon_height-3, x+2]) > 10 and \
+            sum(board[y+icon_height-3, x+2]) < 100 and \
+            sum(board[y+icon_height-3, x+icon_width-3]) > 10 and \
+            sum(board[y+icon_height-3, x+icon_width-3]) < 100) or \
+            closed_kan_index == 3:
+            # Found the start of a closed kan
+            if closed_kan_index == 0:
+                closed_kan_index = 1
+        elif sum(board[y, x]) < 440 or \
+           sum(board[y+icon_height-1, x]) < 440 or \
+           sum(board[y, x+icon_width-1]) < 440 or \
+           sum(board[y+icon_height-1, x+icon_width-1]) < 440 or \
+           kan_tile:
+            # Found no regular tile
+            tx = x
+            ty = y
+            if owner == 0:
+                ty += (tile_height - tile_heights[3]) - 1
+                tx -= (tile_widths[1] - tile_width)
+            elif owner == 1:
+                tx += (tile_width - tile_widths[0])
+                ty += 1
+            elif owner == 2:
+                ty -= 1
+            elif owner == 3:
+                ty -= (tile_heights[0] - tile_height) - 1
+            ticon_width  = icon_widths[(owner + 1) % 2]
+            ticon_height = icon_heights[(owner + 1) % 2]
+            if sum(board[ty, tx]) < 440 or \
+               sum(board[ty+ticon_height-1, tx]) < 440 or \
+               sum(board[ty, tx + ticon_width-1]) < 440 or \
+               sum(board[ty+ticon_height-1, tx+ticon_width-1]) < 440:
+                    # Found no sideways tile
+                    tile_img = board[ty:(ty+ticon_height), tx:(tx+ticon_width)]
+                    #cv2.imwrite("Fail.png", tile_img)
+                    break
+            else:
+                # Sideways tile
+                sideways = True
+                sideways_index = set_index
+                tile_img = board[ty:(ty+ticon_height), tx:(tx+ticon_width)]
+                tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
+                if closed_kan_index == 1:
+                    closed_kan_index = 2
+        else:
+            # Regular tile
+            tile_img = board[y:(y+icon_height), x:(x+icon_width)]
+        # Processing
+        if owner % 2 == 0:
+            x -= tile_widths[(owner + 1) % 4] if sideways else tile_width
+        else:
+            y -= tile_heights[(owner + 1) % 4] if sideways else tile_height
+        if closed_kan_index == 1:
+            continue
+        if closed_kan_index != 3:
+            if owner == 1:
+                tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
+            elif owner == 2:
+                tile_img = cv2.rotate(tile_img, cv2.ROTATE_180)
+            elif owner == 3:
+                tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            if save_img:
+                cv2.imwrite(f"{owner}_{len(open_sets)}_{len(tile_images)}.png", tile_img)
+            tile_img = read_tile.preprocess(tile_img)
+            tile_images.append(tile_img)
+            if kan_tile:
+                tile_images.append(tile_img)
+                if closed_kan_index == 2:
+                    set_index = 2
+                    closed_kan_index = 3
+                    tile_images.append(tile_img)
+                    tile_images.append(tile_img)
+                    continue
+        set_index += 1
+        if set_index == 3:
+            open_set = read_tile.predict(discard_tile_model, tile_images)
+            if not closed_kan_index == 3:
+                open_set[sideways_index] += ["p", "r", "o", "l"][(owner - 3 + sideways_index) % 4]
+            else:
+                closed_kan_index = 0
+            if len(open_set) == 4:
+                for i, tile in enumerate(open_set):
+                    if tile[0:1] == "0" or tile[0:1] == "5":
+                        open_set[i] = ("0" if i == 0 else "5") + tile[1:]
+            open_sets.append(open_set)
+            set_index = 0
+            tile_images = []
+
+
+    return open_sets
+        
 
 def get_discarded(board, save_img=False):
     # player, right, opposite, left
@@ -141,7 +273,6 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
                     print("Found two riichi tiles, this is impossible.")
                     continue
                 riichi_index = len(tile_images)
-                print("Riichi!", len(tile_images))
                 tile_img = board[ry:(ry+ricon_height), rx:(rx+ricon_width)]
                 tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
         else:
@@ -447,4 +578,9 @@ def scan_start_end(board, from_x, from_y, to_x, to_y, min_value=0, max_drought=5
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 2:
+        print("Needs to receive the name of a file from the boards directory.")
+        print("The filename should be without the directory and extension.")
+        print("Usage: python tenhou/read_board.py <filename>")
+        sys.exit(-1)
+    main(sys.argv[1])

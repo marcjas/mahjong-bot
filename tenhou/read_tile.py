@@ -33,6 +33,8 @@ def main():
     print("Finished discard tile model")
 
 def create_private_tile_model():
+    if not os.path.exists(models_dir):
+        os.mkdir(models_dir)
     model_path = os.path.join(models_dir, "private_tile_recognition")
     if os.path.exists(model_path):
         model = TileNN()
@@ -46,6 +48,8 @@ def create_private_tile_model():
     return model
 
 def create_discard_tile_model():
+    if not os.path.exists(models_dir):
+        os.mkdir(models_dir)
     model_path = os.path.join(models_dir, "discard_tile_recognition")
     if os.path.exists(model_path):
         model = TileNN()
@@ -109,7 +113,9 @@ def create_model(files):
     return model
 
 def predict(model, X):
+    single = False
     if type(X) == "int":
+        single = True
         X = np.array([X])
 
     X = torch.from_numpy(np.array([np.array(i).flatten().astype(np.float32) for i in X]))
@@ -119,7 +125,7 @@ def predict(model, X):
     y_pred = pred_probab.argmax(1)
     labels = [tiles[i] for i in y_pred]
 
-    if len(labels) == 1:
+    if single:
         return labels[0]
     else:
         return labels
