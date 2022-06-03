@@ -79,7 +79,7 @@ def read(driver, size_mult=1):
 
     doras = read_board.get_doras(board)
     print("Doras:", ' '.join(doras))
-
+    
 def save(driver):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")
 
