@@ -8,6 +8,7 @@ import cv2
 from imageio.v2 import imread
 import io
 import read_board
+import read_scoreboard
 import sys
 import argparse
 
@@ -40,10 +41,11 @@ def main(size_mult=1):
         command = input("Command: ").lower()
         
         if command == "help" or command == "?":
-            print("help: This menu")
-            print("?:    This menu")
-            print("read: Read the board")
-            print("stop: Exit the program")
+            print("help:   This menu")
+            print("?:      This menu")
+            print("read:   Read the board")
+            print("adjust: Auto-adjust the window size")
+            print("stop:   Exit the program")
         elif command == "read":
             read(driver, size_mult)
         elif command == "adjust":
@@ -58,6 +60,8 @@ def read(driver, size_mult=1):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")
     board = decode_canvas(driver, canvases[1])
     board = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
+    scoreboard = decode_canvas(driver, canvases[2])
+    scoreboard = cv2.cvtColor(scoreboard, cv2.COLOR_RGB2BGR)
 
     if board.shape[1] != read_board.expected_width * size_mult:
         print(f"Window size was changed. Auto-adjusting...")
@@ -68,6 +72,9 @@ def read(driver, size_mult=1):
 
     if board.shape[1] != read_board.expected_width:
         board = cv2.resize(board, (read_board.expected_width, read_board.expected_height))
+
+    if scoreboard.shape[1] != read_scoreboard.expected_width:
+        scoreboard = cv2.resize(scoreboard, (read_scoreboard.expected_width, read_scoreboard.expected_height))
     
     player_tiles = read_board.get_player_tiles(board)
     print(' '.join(player_tiles))
@@ -75,10 +82,17 @@ def read(driver, size_mult=1):
     discarded_tiles = read_board.get_discarded(board)
     print("Discarded:")
     for i in range(4):
-        print(' '.join(discarded_tiles[i]))
+        print(i, ":", ' '.join(discarded_tiles[i]))
 
     doras = read_board.get_doras(board)
     print("Doras:", ' '.join(doras))
+
+    open_tiles = read_board.get_open_tiles(board)
+    for i in range(4):
+        print(i, ":", open_tiles[i])
+
+    scores = read_scoreboard.get_scores(scoreboard)
+    print("Scores:", scores)
     
 def save(driver):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")

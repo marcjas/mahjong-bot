@@ -28,7 +28,7 @@ def main(filename):
     doras = get_doras(board)
     print("Doras:", ' '.join(doras))
 
-    open_tiles = get_open_tiles(board, save_img=True)
+    open_tiles = get_open_tiles(board)
     for i in range(4):
         print(open_tiles[i])
 
@@ -120,10 +120,10 @@ def get_open_tile_pile(board, x, y, owner=0, save_img=False):
     while True:
         sideways = False
         kan_tile = (sum(board[y+kan_height, x+kan_width]) > 200)
-        if (sum(board[y+icon_height-3, x+2]) > 10 and \
-            sum(board[y+icon_height-3, x+2]) < 100 and \
-            sum(board[y+icon_height-3, x+icon_width-3]) > 10 and \
-            sum(board[y+icon_height-3, x+icon_width-3]) < 100) or \
+        if (sum(board[y+icon_height-2, x+1]) > 10 and \
+            sum(board[y+icon_height-2, x+1]) < 100 and \
+            sum(board[y+icon_height-2, x+icon_width-2]) > 10 and \
+            sum(board[y+icon_height-2, x+icon_width-2]) < 100) or \
             closed_kan_index == 3:
             # Found the start of a closed kan
             if closed_kan_index == 0:
@@ -172,6 +172,8 @@ def get_open_tile_pile(board, x, y, owner=0, save_img=False):
             x -= tile_widths[(owner + 1) % 4] if sideways else tile_width
         else:
             y -= tile_heights[(owner + 1) % 4] if sideways else tile_height
+        if closed_kan_index > 0:
+            print(closed_kan_index, owner, set_index, len(open_sets))
         if closed_kan_index == 1:
             continue
         if closed_kan_index != 3:
@@ -215,19 +217,32 @@ def get_open_tile_pile(board, x, y, owner=0, save_img=False):
 def get_discarded(board, save_img=False):
     # player, right, opposite, left
     discarded = [
-        get_discard_pile(board, 227, 312,  25,  28, 21, 24, owner=0, save_img=save_img),
-        get_discard_pile(board, 377, 290,  33, -21, 29, 19, owner=1, save_img=save_img),
-        get_discard_pile(board, 352, 158, -25, -28, 21, 24, owner=2, save_img=save_img),
-        get_discard_pile(board, 194, 185, -33,  21, 29, 19, owner=3, save_img=save_img)
+        get_discard_pile(board, 227, 312, owner=0, save_img=save_img),
+        get_discard_pile(board, 377, 290, owner=1, save_img=save_img),
+        get_discard_pile(board, 352, 158, owner=2, save_img=save_img),
+        get_discard_pile(board, 194, 185, owner=3, save_img=save_img)
     ]
 
     return discarded
 
-def get_discard_pile(board, x, y, tile_width, tile_height, icon_width, icon_height, owner=0, save_img=False):
+def get_discard_pile(board, x, y, owner=0, save_img=False):
+    tile_widths  = [25,  33, -25, -33]
+    tile_heights = [28, -21, -28,  21]
+    icon_widths  = [21,  29]
+    icon_heights = [24,  19]
+
+    tile_width  = tile_widths[owner]
+    tile_height = tile_heights[owner]
+    icon_width  = icon_widths[owner % 2]
+    icon_height = icon_heights[owner % 2]
+
+    base_x = x
+    base_y = y
+    riichi_index = -1
+
     tile_images = []
     original_tile_images = []
     while True:
-<<<<<<< HEAD
         riichi = False
         tile_img = None
         if sum(board[y, x]) < 440 or \
@@ -266,15 +281,6 @@ def get_discard_pile(board, x, y, tile_width, tile_height, icon_width, icon_heig
             # Regular tile
             tile_img = board[y:(y+icon_height), x:(x+icon_width)]
         # Processing
-=======
-        if sum(board[y, x]) < 10 or \
-           sum(board[y+icon_height, x]) < 10 or \
-           sum(board[y, x + icon_width]) < 10 or \
-           sum(board[y+icon_height, x+icon_width]) < 10:
-            # Found no full tile
-            break
-        tile_img = board[y:(y+icon_height), x:(x+icon_width)]
->>>>>>> 480984964e724d67271893b7128cf8373e209b87
         if owner == 1:
             tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
         elif owner == 2:
@@ -285,14 +291,14 @@ def get_discard_pile(board, x, y, tile_width, tile_height, icon_width, icon_heig
         tile_img = read_tile.preprocess(tile_img)
         tile_images.append(tile_img)
         if owner % 2 == 0:
-            x += tile_width
+            x += tile_widths[(owner + 1) % 4] if riichi else tile_width
             if len(tile_images) <= 12 and len(tile_images) % 6 == 0:
-                x -= tile_width * 6
+                x = base_x
                 y += tile_height
         else:
-            y += tile_height
+            y += tile_heights[(owner + 1) % 4] if riichi else tile_height
             if len(tile_images) <= 12 and len(tile_images) % 6 == 0:
-                y -= tile_height * 6
+                y = base_y
                 x += tile_width
     
     if len(tile_images) > 0:
@@ -303,166 +309,82 @@ def get_discard_pile(board, x, y, tile_width, tile_height, icon_width, icon_heig
                 tile_name = discarded[i]
                 file_name = f"data/test/{owner_name}/{tile_name}_{100*(owner+1)+i}.png"
                 cv2.imwrite(file_name, img)
+        if riichi_index >= 0:
+            discarded[riichi_index] += "r"
         return discarded
 
     return []
 
-def get_discarded_by_scan(board, save_img=False):
-    # player, right, opposite, left
-    discarded = []
-
-    # player tiles
-    _, top_y = scan_start(board, 146, 220, 146, 240)
-    tile_height = 20
-    tile_width = 16
-    tile_images = []
-    original_tile_images = []
-    for row in range(3):
-        y = round(top_y + tile_height/2 + tile_height*row)
-        x, _, width, _ = scan_start_end(board, 130, y, 300, y)
-        num_tiles = round(width / tile_width)
-        if num_tiles == 0:
-            continue
-        real_tile_width = width / num_tiles
-        for i in range(num_tiles):
-            start_x = round(x + real_tile_width * i)
-            end_x   = round(x + min([real_tile_width * (i+1), width]))
-            start_y = top_y + tile_height * row + 1
-            end_y   = top_y + tile_height * (row + 1)
-            tile_img = board[start_y:end_y, start_x:end_x]
-            original_tile_images.append(tile_img)
-            tile_img = read_tile.preprocess(tile_img)
-            tile_images.append(tile_img)
-    
-    if len(tile_images) > 0:
-        discarded.append(read_tile.predict(discard_tile_model, tile_images))
-        if save_img:
-            for i, img in enumerate(original_tile_images):
-                tile_name = discarded[0][i]
-                file_name = f"data/test/player/{tile_name}_p{300+i}.png"
-                cv2.imwrite(file_name, img)
-    else:
-        discarded.append([])
-    
-    # right tiles
-    left_x, _ = scan_start(board, 230, 224, 260, 224)
-    tile_height = 16
-    tile_width = 21
-    tile_images = []
-    original_tile_images = []
-    for row in range(3):
-        x = round(left_x + tile_width/2 + tile_width*row)
-        _, y, _, height = scan_start_end(board, x, 76, x, 260)
-        height -= 6 # side of tile
-        num_tiles = round(height / tile_height)
-        if num_tiles == 0:
-            continue
-        real_tile_height = height / num_tiles
-        for j in range(num_tiles):
-            i = num_tiles - j - 1
-            start_y = round(y + real_tile_height * i)
-            end_y   = round(y + min([real_tile_height * (i+1), height]))
-            start_x = left_x + tile_width * row + 1
-            end_x   = left_x + tile_width * (row + 1)
-            tile_img = board[start_y:end_y, start_x:end_x]
-            tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
-            original_tile_images.append(tile_img)
-            tile_img = read_tile.preprocess(tile_img)
-            tile_images.append(tile_img)
-    
-    if len(tile_images) > 0:
-        discarded.append(read_tile.predict(discard_tile_model, tile_images))
-        if save_img:
-            for i, img in enumerate(original_tile_images):
-                tile_name = discarded[1][i]
-                file_name = f"data/test/right/{tile_name}_r{300+i}.png"
-                cv2.imwrite(file_name, img)
-    else:
-        discarded.append([])
-    
-    # opposite tiles
-    _, bottom_y = scan_start(board, 224, 140, 224, 100)
-    bottom_y -= 5 # side of tile
-    tile_height = 20
-    tile_width = 16
-    tile_images = []
-    original_tile_images = []
-    for row in range(3):
-        y = round(bottom_y - tile_height/2 - tile_height*row)
-        x, _, width, _ = scan_start_end(board, 68, y, 240, y)
-        num_tiles = round(width / tile_width)
-        if num_tiles == 0:
-            continue
-        real_tile_width = width / num_tiles
-        for j in range(num_tiles):
-            i = num_tiles - j - 1
-            start_x = round(x + real_tile_width * i)
-            end_x   = round(x + min([real_tile_width * (i+1), width]))
-            start_y = bottom_y - tile_height * (row + 1) + 1
-            end_y   = bottom_y - tile_height * row
-            tile_img = board[start_y:end_y, start_x:end_x]
-            tile_img = cv2.rotate(tile_img, cv2.ROTATE_180)
-            original_tile_images.append(tile_img)
-            tile_img = read_tile.preprocess(tile_img)
-            tile_images.append(tile_img)
-    
-    if len(tile_images) > 0:
-        discarded.append(read_tile.predict(discard_tile_model, tile_images))
-        if save_img:
-            for i, img in enumerate(original_tile_images):
-                tile_name = discarded[2][i]
-                file_name = f"data/test/opposite/{tile_name}_o{300+i}.png"
-                cv2.imwrite(file_name, img)
-    else:
-        discarded.append([])
-    
-    # left tiles
-    right_x, _ = scan_start(board, 150, 146, 110, 146)
-    tile_height = 16
-    tile_width = 21
-    tile_images = []
-    original_tile_images = []
-    for row in range(3):
-        x = round(right_x - tile_width/2 - tile_width*row)
-        _, y, _, height = scan_start_end(board, x, 76, x, 260)
-        height -= 6 # side of tile
-        num_tiles = round(height / tile_height)
-        if num_tiles == 0:
-            continue
-        real_tile_height = height / num_tiles
-        for i in range(num_tiles):
-            start_y = round(y + real_tile_height * i)
-            end_y   = round(y + min([real_tile_height * (i+1), height]))
-            start_x = right_x - tile_width * (row + 1) + 1
-            end_x   = right_x - tile_width * row + 1
-            tile_img = board[start_y:end_y, start_x:end_x]
-            tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            original_tile_images.append(tile_img)
-            tile_img = read_tile.preprocess(tile_img)
-            tile_images.append(tile_img)
-    
-    if len(tile_images) > 0:
-        discarded.append(read_tile.predict(discard_tile_model, tile_images))
-        if save_img:
-            for i, img in enumerate(original_tile_images):
-                tile_name = discarded[3][i]
-                file_name = f"data/test/left/{tile_name}_l{300+i}.png"
-                cv2.imwrite(file_name, img)
-    else:
-        discarded.append([])
-
-    return discarded
-
 def get_doras(board):
-    icon_width_v = 21
-    icon_height_v = 24
-    icon_width_h = 29
-    icon_height_v = 19
-    #get_discard_pile(board, 227, 312,  25,  28, 21, 24, owner=0, save_img=save_img),
-    #get_discard_pile(board, 377, 290,  33, -21, 29, 19, owner=1, save_img=save_img),
+    doras = []
+    doras += get_wall_doras(board, 0)
+    doras += get_wall_doras(board, 1)
+    doras += get_wall_doras(board, 2)
+    doras += get_wall_doras(board, 3)
+    return doras
 
 def get_wall_doras(board, owner=0):
-    x = []
+    icon_width = 21 if owner % 2 == 0 else 29
+    icon_height = 24 if owner % 2 == 0 else 19
+    tile_width = 25 if owner % 2 == 0 else 33
+    tile_height = 28 if owner % 2 == 0 else 21
+    x = [104, 498, 475, 73][owner]
+    y = [409, 389, 52, 77][owner]
+
+    doras = []
+
+    while True:
+        if sum(board[y, x]) < 140 or \
+           sum(board[y+icon_height, x]) < 140 or \
+           sum(board[y, x + icon_width]) < 140 or \
+           sum(board[y+icon_height, x+icon_width]) < 140:
+            # Found no tile
+            match owner:
+                case 0:
+                    x += 1
+                    if x > 510:
+                        break
+                case 1:
+                    y -= 1
+                    if y < 60:
+                        break
+                case 2:
+                    x -= 1
+                    if x < 70:
+                        break
+                case 3:
+                    y += 1
+                    if y > 440:
+                        break
+        else:
+            # Found a tile
+            if owner == 0:
+                x += 2
+            elif owner == 1:
+                y -= 1
+            elif owner == 2:
+                x -= 1
+            tile_img = board[y:(y+icon_height), x:(x+icon_width)]
+            match owner:
+                case 0:
+                    x += tile_width
+                case 1:
+                    tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
+                    y -= tile_height
+                case 2:
+                    tile_img = cv2.rotate(tile_img, cv2.ROTATE_180)
+                    x -= tile_width
+                case 3:
+                    tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    y += tile_height
+            tile_img = read_tile.preprocess(tile_img)
+
+            doras.append(tile_img)
+
+    if len(doras) == 0:
+        return []
+
+    return read_tile.predict(discard_tile_model, doras)
 
 def scan_start(board, from_x, from_y, to_x, to_y, min_value=0):
     while from_x != to_x or from_y != to_y:
