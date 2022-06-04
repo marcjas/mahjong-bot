@@ -15,8 +15,102 @@ def main(filename):
     turn_player = get_turn_player(scoreboard)
     print("Turn player:", ["player", "right", "opposing", "left"][turn_player])
 
+    dealer = get_dealer(scoreboard)
+    print("Dealer:", ["player", "right", "opposing", "left"][dealer])
+
+    round_wind = get_round_wind(scoreboard)
+    round_number = get_round_number(scoreboard)
+    print("Round:", ["east", "south", "west", "north"][round_wind], round_number)
+
+    player_winds = get_player_winds(dealer)
+    print("Player Winds:", [["east", "south", "west", "north"][w] for w in player_winds])
+
     scores = get_scores(scoreboard)
     print("Scores:", scores)
+
+def get_turn_player(scoreboard):
+    points = [
+        [round(scoreboard.shape[1] / 2), scoreboard.shape[0] - 1],
+        [scoreboard.shape[1] - 1, round(scoreboard.shape[0] / 2)],
+        [round(scoreboard.shape[1] / 2), 0],
+        [0, round(scoreboard.shape[0] / 2)]
+    ]
+
+    for i in range(4):
+        point = scoreboard[points[i][1], points[i][0]]
+        if point[1] > point[0] + point[2]:
+            return i
+
+    print("Found no turn player.")
+    return -1
+
+def get_dealer(scoreboard):
+    points = [
+        [26, 102],
+        [136, 104],
+        [118, 12],
+        [10, 10]
+    ]
+
+    for i in range(4):
+        x = points[i][0]
+        y = points[i][1]
+        j = 40
+        while j > 0:
+            j -= 1
+            x += [1, 0, -1, 0][i]
+            y += [0, -1, 0, 1][i]
+            point = scoreboard[y, x]
+            if sum(point) > 120:
+                j = min([j, 6])
+            if sum(point) > 360:
+                return i
+
+    print("Found no dealer player.")
+    return -1
+
+def get_round_wind(scoreboard):
+    x = 40
+    y = 52
+    for i in range(70):
+        point = scoreboard[y, x]
+        if point[0] > int(point[1]) + int(point[2]):
+            if i < 10:
+                return 2
+            else:
+                return 0
+        elif point[2] > int(point[0]) + int(point[1]):
+            return 1
+        x += 1
+
+    return 0
+
+def get_round_number(scoreboard):
+    x = 75
+    y = 41
+    consecutive = 0
+    for i in range(20):
+        point = scoreboard[y, x]
+        if point[2] > int(point[0]) + int(point[1]):
+            return 4
+        elif consecutive > 6:
+            return 1
+        elif sum(point) > min_color:
+            consecutive += 1
+        elif consecutive > 0:
+            if consecutive == 1:
+                return 3
+            else:
+                return 2
+        y += 1
+    return 1
+
+def get_player_winds(dealer):
+    player_wind = (-dealer) % 4
+    winds = []
+    for i in range(4):
+        winds.append((player_wind + i) % 4)
+    return winds
 
 def get_scores(scoreboard):
     scores = [
@@ -193,22 +287,6 @@ def get_connected_points(scoreboard, x, y):
                     DFS(points, point[0], point[1])
     DFS(points, x, y)
     return points
-
-def get_turn_player(scoreboard):
-    points = [
-        [round(scoreboard.shape[1] / 2), scoreboard.shape[0] - 1],
-        [scoreboard.shape[1] - 1, round(scoreboard.shape[0] / 2)],
-        [round(scoreboard.shape[1] / 2), 0],
-        [0, round(scoreboard.shape[0] / 2)]
-    ]
-
-    for i in range(4):
-        point = scoreboard[points[i][1], points[i][0]]
-        if point[1] > point[0] + point[2]:
-            return i
-
-    print("Found no turn player.")
-    sys.exit(-1)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

@@ -77,7 +77,7 @@ def get_player_tiles(board):
             elif len(tiles) > 0:
                 # Stop if no further tiles are found in a while (avoid called tiles)
                 drought += 1
-                if drought > 8:
+                if drought > 16:
                     break
 
     images = []
@@ -212,7 +212,6 @@ def get_open_tile_pile(board, x, y, owner=0, save_img=False):
 
 
     return open_sets
-        
 
 def get_discarded(board, save_img=False):
     # player, right, opposite, left
@@ -239,6 +238,7 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
     base_x = x
     base_y = y
     riichi_index = -1
+    calling_tile = False
 
     tile_images = []
     original_tile_images = []
@@ -266,8 +266,17 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
                sum(board[ry, rx + ricon_width-1]) < 440 or \
                sum(board[ry+ricon_height-1, rx+ricon_width-1]) < 440:
                     # Found no riichi tile
-                    tile_img = board[ry:(ry+ricon_height), rx:(rx+ricon_width)]
-                    break
+                    cx = x + [5, 4, -5, -4][owner]
+                    cy = y + [4, -4, -4, 4][owner]
+                    if sum(board[cy, cx]) < 440 or \
+                       sum(board[cy+icon_height-1, cx]) < 440 or \
+                       sum(board[cy, cx + icon_width-1]) < 440 or \
+                       sum(board[cy+icon_height-1, cx+icon_width-1]) < 440:
+                        # Found no tile ready to be called
+                        break
+                    else:
+                        calling_tile = True
+                        tile_img = board[cy:(cy+icon_height), cx:(cx+icon_width)]
             else:
                 # Riichii tile
                 riichi = True
@@ -311,6 +320,8 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
                 cv2.imwrite(file_name, img)
         if riichi_index >= 0:
             discarded[riichi_index] += "r"
+        if calling_tile:
+            discarded[len(discarded)-1] += "c"
         return discarded
 
     return []
