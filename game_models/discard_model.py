@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import sys
 
 tiles = [
     "1m", "2m", "3m", "4m", 
@@ -15,10 +16,12 @@ tiles = [
     "wd", "gd", "rd"              
 ]
 
-BATCH_SIZE = 100000 
+BATCH_SIZE = 500 
+SAVE_INTERVAL = 200 
 
 def main():
     dataset = DiscardDataset()
+    print(dataset.len)
     dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -27,23 +30,25 @@ def main():
     net = Net().to(device)
     criterion = nn.CrossEntropyLoss()
 
-    X_train, y_train = next(iter(dataloader))
-    X_train, y_train = X_train.to(device), y_train.to(device)
+    learning_rate = (1e-1)*10
+    with open("lossdata.csv", "w+") as csv_file:
+        for epoch in tqdm(range(1000)):
+            loss_list = []
+            for batch, (x, y) in enumerate(dataloader):
+                X_train = x.to(device)
+                y_train = y.to(device)
+                y_pred = net(X_train)
+                loss = criterion(y_pred, y_train)
+                loss_list.append(loss.item())
 
-    print(X_train.shape)
-
-    learning_rate = 1e-1
-    loss_list = []
-    for _ in tqdm(range(1000)):
-        y_pred = net(X_train)
-        loss = criterion(y_pred, y_train)
-        print(loss.item())
-        loss_list.append(loss.item())
-        net.zero_grad() # clear gradients of model parameters
-        loss.backward() # update weights
-        with torch.no_grad():
-            for param in net.parameters():
-                param -= learning_rate * param.grad
+            csv_file.write(f"{epoch},{loss_list[-1]}\n") 
+            net.zero_grad() # clear gradients of model parameters
+            loss.backward() # update weights
+            with torch.no_grad():
+                for param in net.parameters():
+                    param -= learning_rate * param.grad
+            if epoch % SAVE_INTERVAL == SAVE_INTERVAL-1:
+                torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
 
     logits = net(X_train)
     pred_prob = nn.Softmax(dim=1)(logits)
@@ -53,7 +58,6 @@ def main():
     for i in range(len(y_pred)):
         label = tiles[(y_train[i] == 1).nonzero(as_tuple=True)[0]]
         predicted_tile = tiles[y_pred[i]]
-        # print(f"predicted: {predicted_tile}, actual discard: {label}")
         if label != predicted_tile:
             wrong_cnt += 1
     accuracy = 100 - (100*(wrong_cnt / len(y_train)))
