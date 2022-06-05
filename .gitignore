@@ -2,3 +2,5 @@ __pycache__/
 data/tenhou-logs/*
 data/model_data/*
 tenhou_logs_parser/metadata.pickle
+game_models/wandb
+game_models/models/*

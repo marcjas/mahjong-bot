@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import sys
+import wandb
+
+wandb.init(project="riichi-mahjong", entity="shuthus")
 
 tiles = [
     "1m", "2m", "3m", "4m", 
@@ -13,15 +16,15 @@ tiles = [
     "1s", "2s", "3s", "4s", 
     "5s", "6s", "7s", "8s", "9s", 
     "ew", "sw", "ww", "nw",
-    "wd", "gd", "rd"              
+    "wd", "gd", "rd"
 ]
 
 DATASET_SIZE = 10000 # set to None if you want to load everything
-BATCH_SIZE = 500 
+BATCH_SIZE = 5000
 SAVE_INTERVAL = 200 
 
 def main():
-    if DATASET_SIZE is not None and BATCH_SIZE < DATASET_SIZE:
+    if DATASET_SIZE is not None and BATCH_SIZE > DATASET_SIZE:
         print("BATCH_SIZE can't be smaller than DATASET_SIZE")
         sys.exit(-1)
 
@@ -34,26 +37,33 @@ def main():
     net = Net().to(device)
     criterion = nn.CrossEntropyLoss()
 
-    learning_rate = (1e-1)*10
-    with open("lossdata.csv", "w") as csv_file:
-        for epoch in tqdm(range(1000)):
-            loss_list = []
-            for batch, (x, y) in enumerate(dataloader):
-                X_train = x.to(device)
-                y_train = y.to(device)
-                y_pred = net(X_train)
-                loss = criterion(y_pred, y_train)
-                loss_list.append(loss.item())
+    learning_rate = 0.1
+    epochs = 1000
 
-            csv_file.write(f"{epoch},{loss_list[-1]}\n") 
-            net.zero_grad() # clear gradients of model parameters
-            loss.backward() # update weights
-            with torch.no_grad():
-                for param in net.parameters():
-                    param -= learning_rate * param.grad
+    wandb.config = {
+    "learning_rate": learning_rate,
+    "epochs": epochs,
+    "batch_size": BATCH_SIZE 
+    }
 
-            if epoch % SAVE_INTERVAL == SAVE_INTERVAL-1:
-                torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
+    for epoch in tqdm(range(epochs)):
+        loss_list = []
+        for x, y in dataloader:
+            X_train = x.to(device)
+            y_train = y.to(device)
+            y_pred = net(X_train)
+            loss = criterion(y_pred, y_train)
+            loss_list.append(loss.item())
+
+        wandb.log({"loss": loss_list[-1]})
+        net.zero_grad() # clear gradients of model parameters
+        loss.backward() # update weights
+        with torch.no_grad():
+            for param in net.parameters():
+                param -= learning_rate * param.grad
+
+        if epoch % SAVE_INTERVAL == SAVE_INTERVAL-1:
+            torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
 
     logits = net(X_train)
     pred_prob = nn.Softmax(dim=1)(logits)
