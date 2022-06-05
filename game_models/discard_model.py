@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import sys
 
 tiles = [
     "1m", "2m", "3m", "4m", 
@@ -11,15 +12,19 @@ tiles = [
     "5p", "6p", "7p", "8p", "9p", 
     "1s", "2s", "3s", "4s", 
     "5s", "6s", "7s", "8s", "9s", 
-    "ew", "sw", "ww", "nw",       
+    "ew", "sw", "ww", "nw",
     "wd", "gd", "rd"              
 ]
 
-DATASET_SIZE = 10000
+DATASET_SIZE = 10000 # set to None if you want to load everything
 BATCH_SIZE = 500 
 SAVE_INTERVAL = 200 
 
 def main():
+    if DATASET_SIZE is not None and BATCH_SIZE < DATASET_SIZE:
+        print("BATCH_SIZE can't be smaller than DATASET_SIZE")
+        sys.exit(-1)
+
     dataset = DiscardDataset(DATASET_SIZE)
     dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -30,7 +35,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
 
     learning_rate = (1e-1)*10
-    with open("lossdata.csv", "w+") as csv_file:
+    with open("lossdata.csv", "w") as csv_file:
         for epoch in tqdm(range(1000)):
             loss_list = []
             for batch, (x, y) in enumerate(dataloader):
@@ -46,6 +51,7 @@ def main():
             with torch.no_grad():
                 for param in net.parameters():
                     param -= learning_rate * param.grad
+
             if epoch % SAVE_INTERVAL == SAVE_INTERVAL-1:
                 torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
 
