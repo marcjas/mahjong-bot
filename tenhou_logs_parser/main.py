@@ -291,37 +291,35 @@ class PlayerState:
 
     def to_processed_features_list(self):
         """
-        34 x 4
-        34 x 30
-        34 x 30 x 3
-        34 x 4
-        34 x 4 x 3
-        34 x 4
-        12
-        4
-        4
-        4
-        3
+        private_tiles:                  34 x 4
+        private_discarded_tiles:        34 x 30
+        others_discarded_tiles:         34 x 30 x 3
+        private_open_tiles:             34 x 4
+        others_open_tiles:              34 x 4 x 3
+        dora_indicators:                34 x 4
+        round_name:                     12
+        player_scores:                  4
+        self_wind:                      4
+        aka_doras_in_hand:              4
+        riichi_status:                  3
         """
 
         # self._private_tiles
         private_tiles = [0] * 34 * 4
         mapped_private_tiles = list(map(lambda x: x[0:2], self._private_tiles))
         for tile in mapped_private_tiles:
-            offset = 0
             idx = tiles.index(tile)
-            while private_tiles[idx + offset] == 1:
-                offset += 34
-                if private_tiles[idx + offset] == 0:
+            for i in range(4):
+                if private_tiles[idx + i * 34] == 0:
+                    private_tiles[idx + i * 34] = 1
                     break
-            private_tiles[idx + offset] = 1
 
         # self._private_discarded_tiles
         private_discarded_tiles = [0] * 34 * 30
         mapped_private_discarded_tiles = list(map(lambda x: x[0:2], self._private_discarded_tiles))
         for i, tile in enumerate(mapped_private_discarded_tiles):
             idx = tiles.index(tile)
-            private_discarded_tiles[idx + (i * 32)] = 1
+            private_discarded_tiles[idx + (i * 34)] = 1
 
         # self._others_discarded_tiles
         private_others_discarded_tiles = [0] * 34 * 30 * 3
@@ -329,7 +327,7 @@ class PlayerState:
             mapped_player_discarded_tiles = list(map(lambda x: x[0:2], discarded_tiles)) 
             for i, tile in enumerate(mapped_player_discarded_tiles):
                 idx = tiles.index(tile)
-                private_others_discarded_tiles[idx + (i * 32) + (player_i * 34 * 30)] = 1
+                private_others_discarded_tiles[idx + (i * 34) + (player_i * 34 * 30)] = 1
 
         # self._private_open_tiles
         private_open_tiles = [0] * 34 * 4
@@ -337,7 +335,10 @@ class PlayerState:
             mapped_meld = list(map(lambda x: x[0:2], meld))
             for tile in mapped_meld:
                 idx = tiles.index(tile)
-                private_open_tiles[idx + (i * 32)] = 1
+                for j in range(4):
+                    if private_open_tiles[idx + (j * 34)] == 0:
+                        private_open_tiles[idx + (j * 34)] = 1
+                        break
 
         # self._others_open_tiles
         others_open_tiles = [0] * 34 * 4 * 3
@@ -346,19 +347,20 @@ class PlayerState:
                 mapped_meld = list(map(lambda x: x[0:2], meld))
                 for tile in mapped_meld:
                     idx = tiles.index(tile)
-                    others_open_tiles[idx + (i * 32 + (player_i * 34 * 4))] = 1
+                    for j in range(4):
+                        if others_open_tiles[idx + (j * 34 + (player_i * 34 * 4))] == 0:
+                            others_open_tiles[idx + (j * 34 + (player_i * 34 * 4))] = 1
+                            break
 
         # self._dora_indicators
         dora_indicators = [0] * 34 * 4
         mapped_dora_indicators = list(map(lambda x: x[0:2], self._dora_indicators))
         for tile in mapped_dora_indicators:
-            offset = 0
             idx = tiles.index(tile)
-            while private_tiles[idx + offset] == 1:
-                offset += 34
-                if private_tiles[idx + offset] == 0:
+            for i in range(4):
+                if dora_indicators[idx + i * 34] == 0:
+                    dora_indicators[idx + i * 34] = 1
                     break
-            dora_indicators[idx + offset] = 1
 
         # self._round_name
         round_name = [0] * 12
@@ -372,11 +374,10 @@ class PlayerState:
         for i, player_score in enumerate(self._player_scores):
             if player_score >= 1000:
                 player_scores[i] = 1
-                continue
-            elif player_score <= 1000:
+            elif player_score <= 0:
                 player_scores[i] = 0
-                continue
-            player_scores[i] = player_score / 1000
+            else:
+                player_scores[i] = player_score / 1000
 
         # self._self_wind
         self_wind = [0] * 4
@@ -662,7 +663,7 @@ chii_combinations = {
     "9": ["78"],
 }
 
-batch_size = 50 # game
+batch_size = 100 # game
 batch_states = [[], [], [], [], []]
 batch_actions = [[], [], [], [], []]
 
@@ -675,7 +676,7 @@ MAX_CHII_DATA = 100
 MAX_PON_DATA = 100
 MAX_KAN_DATA = 100
 MAX_RIICHI_DATA = 100
-MAX_DISCARD_DATA = 10000
+MAX_DISCARD_DATA = 50000
 MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
 
 def get_metadata():

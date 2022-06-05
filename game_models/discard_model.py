@@ -3,7 +3,6 @@ from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-import sys
 
 tiles = [
     "1m", "2m", "3m", "4m", 
@@ -16,12 +15,12 @@ tiles = [
     "wd", "gd", "rd"              
 ]
 
+DATASET_SIZE = 10000
 BATCH_SIZE = 500 
 SAVE_INTERVAL = 200 
 
 def main():
-    dataset = DiscardDataset()
-    print(dataset.len)
+    dataset = DiscardDataset(DATASET_SIZE)
     dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
