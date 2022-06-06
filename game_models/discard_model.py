@@ -1,3 +1,4 @@
+import math
 from datasets import DiscardDataset
 from torch.utils.data import DataLoader 
 import torch
@@ -5,6 +6,7 @@ import torch.nn as nn
 from tqdm import tqdm
 import sys
 import wandb
+import torch.optim as optim
 
 wandb.init(project="riichi-mahjong", entity="shuthus")
 
@@ -19,9 +21,12 @@ tiles = [
     "wd", "gd", "rd"
 ]
 
-DATASET_SIZE = 10000 # set to None if you want to load everything
-BATCH_SIZE = 5000
+DATASET_SIZE = 20000 # set to None if you want to load everything
+BATCH_SIZE = 8000 
 SAVE_INTERVAL = 200 
+
+LEARNING_RATE = 1
+EPOCHS = 200
 
 def main():
     if DATASET_SIZE is not None and BATCH_SIZE > DATASET_SIZE:
@@ -29,55 +34,51 @@ def main():
         sys.exit(-1)
 
     dataset = DiscardDataset(DATASET_SIZE)
-    dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}...")
 
     net = Net().to(device)
+    optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss()
 
-    learning_rate = 0.1
-    epochs = 1000
 
     wandb.config = {
-    "learning_rate": learning_rate,
-    "epochs": epochs,
+    "learning_rate": LEARNING_RATE,
+    "epochs": EPOCHS,
     "batch_size": BATCH_SIZE 
     }
 
-    for epoch in tqdm(range(epochs)):
-        loss_list = []
-        for x, y in dataloader:
-            X_train = x.to(device)
-            y_train = y.to(device)
-            y_pred = net(X_train)
-            loss = criterion(y_pred, y_train)
-            loss_list.append(loss.item())
+    n_batches = math.ceil(dataset.len / BATCH_SIZE)
+    n_size = dataset.len
 
-        wandb.log({"loss": loss_list[-1]})
-        net.zero_grad() # clear gradients of model parameters
-        loss.backward() # update weights
-        with torch.no_grad():
-            for param in net.parameters():
-                param -= learning_rate * param.grad
+    for epoch in tqdm(range(EPOCHS)):
+        total_epoch_train_loss = 0
+        train_correct = 0
+        for x, y in dataloader:
+            X_train, y_train = x.to(device), y.squeeze().to(device)
+            y_pred = net(X_train)
+
+            loss = criterion(y_pred, y_train)
+            total_epoch_train_loss += loss
+            net.zero_grad() # clear gradients of model parameters
+            loss.backward() # update weights
+            with torch.no_grad():
+                for param in net.parameters():
+                    param -= LEARNING_RATE * param.grad
+
+            predictions = torch.argmax(nn.Softmax(dim=1)(y_pred), dim=1)
+            train_correct += (predictions == y_train).float().sum()
+
+        wandb.log({
+            "Epoch": epoch,
+            "Train loss": total_epoch_train_loss / n_batches,
+            "Train acc": 100 * (train_correct / n_size),
+        })
 
         if epoch % SAVE_INTERVAL == SAVE_INTERVAL-1:
             torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
-
-    logits = net(X_train)
-    pred_prob = nn.Softmax(dim=1)(logits)
-    y_pred = torch.argmax(pred_prob, dim=1)
-
-    wrong_cnt = 0
-    for i in range(len(y_pred)):
-        label = tiles[(y_train[i] == 1).nonzero(as_tuple=True)[0]]
-        predicted_tile = tiles[y_pred[i]]
-        if label != predicted_tile:
-            wrong_cnt += 1
-    accuracy = 100 - (100*(wrong_cnt / len(y_train)))
-    print(f"accuracy: {accuracy}%")
-
 
 class Net(nn.Module):
     def __init__(self):

@@ -48,26 +48,26 @@ class KanDataset(Dataset):
 class RiichiDataset(Dataset):
     def __init__(self, size=None):
         self.len = Utils.get_metadata()[3] if size == None else size
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(riichi_data_file_path, shared=False, size=self.len * 4957)).reshape(self.len, 4957)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(riichi_data_file_path, shared=False, size=self.len * 4924)).reshape(self.len, 4924)
         print(f"Loaded {self.len} samples...")
     
     def __len__(self):
         return self.len 
 
     def __getitem__(self, idx):
-        return self.data[idx][0:-34], self.data[idx][-34:]
+        return self.data[idx][0:-1], self.data[idx][-1:]
 
 class DiscardDataset(Dataset):
     def __init__(self, size=None):
         self.len = Utils.get_metadata()[4] if size == None else size
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(discard_data_file_path, shared=False, size=self.len * 4957)).reshape(self.len, 4957)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(discard_data_file_path, shared=False, size=self.len * 4924)).reshape(self.len, 4924)
         print(f"Loaded {self.len} samples...")
     
     def __len__(self):
         return self.len 
 
     def __getitem__(self, idx):
-        return self.data[idx][0:-34], self.data[idx][-34:]
+        return self.data[idx][0:-1], self.data[idx][-1:].long()
 
 class Utils():
     @staticmethod

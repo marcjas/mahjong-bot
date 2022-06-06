@@ -709,7 +709,7 @@ def export():
                 vector_length = 4923 + 1
             case 4: 
                 memmap_file_name = "../data/model_data/discard_data.dat"
-                vector_length = 4923 + 34
+                vector_length = 4923 + 1
             case _: sys.exit(-1)
 
         # shared=True allows us to save the tensor to disk as we perform in place modifications to it
@@ -720,7 +720,7 @@ def export():
             if metadata[i] >= MAX_DATA[i]:
                 break
             if i == 4:
-                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + transform_hand([action]))
+                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [tiles.index(action[0:2])])
             else:
                 memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [action])
             metadata[i] += 1
