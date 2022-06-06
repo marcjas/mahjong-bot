@@ -438,7 +438,6 @@ for key in Game.__dict__:
         Game.TAGS[key[3:]] = getattr(Game, key)
 
 if __name__ == '__main__':
-    import yaml
     import sys
 
     args = sys.argv[1:]
