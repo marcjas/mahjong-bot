@@ -7,8 +7,6 @@ from tqdm import tqdm
 import sys
 import wandb
 
-wandb.init(project="riichi-mahjong", entity="shuthus")
-
 tiles = [
     "1m", "2m", "3m", "4m", 
     "5m", "6m", "7m", "8m", "9m",
@@ -20,13 +18,16 @@ tiles = [
     "wd", "gd", "rd"
 ]
 
+USE_WANDB = False
 DATASET_SIZE = 20000 # set to None if you want to load everything
 BATCH_SIZE = 8000 
-SAVE_INTERVAL = 200 
+SAVE_INTERVAL = None # set to None if you don't want to torch.save()
 
 # hyperparams
 LEARNING_RATE = 1
 EPOCHS = 200
+
+if USE_WANDB: wandb.init(project="riichi-mahjong", entity="shuthus")
 
 def main():
     if DATASET_SIZE is not None and BATCH_SIZE > DATASET_SIZE:
@@ -34,19 +35,13 @@ def main():
         sys.exit(-1)
 
     dataset = DiscardDataset(DATASET_SIZE)
-    dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE)
+    dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}...")
 
     net = Net().to(device)
     criterion = nn.CrossEntropyLoss()
-
-    wandb.config = {
-    "learning_rate": LEARNING_RATE,
-    "epochs": EPOCHS,
-    "batch_size": BATCH_SIZE 
-    }
 
     n_batches = math.ceil(dataset.len / BATCH_SIZE)
     n_size = dataset.len
@@ -69,13 +64,13 @@ def main():
             predictions = torch.argmax(nn.Softmax(dim=1)(y_pred), dim=1)
             train_correct += (predictions == y_train).float().sum()
 
-        wandb.log({
+        if USE_WANDB: wandb.log({
             "Epoch": epoch,
             "Train loss": total_epoch_train_loss / n_batches,
             "Train acc": 100 * (train_correct / n_size),
         })
 
-        if epoch % SAVE_INTERVAL == 0 or epoch == EPOCHS - 1:
+        if SAVE_INTERVAL is not None and (epoch % SAVE_INTERVAL == 0 or epoch == EPOCHS - 1):
             torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
 
 class Net(nn.Module):
@@ -87,7 +82,6 @@ class Net(nn.Module):
         )
 
         in_features = 4923
-
         self.l1 = nn.Sequential(
             nn.Linear(in_features, in_features*2),
             nn.ReLU(),
@@ -97,11 +91,8 @@ class Net(nn.Module):
         )
 
     def forward(self, x):
-        # x = x.view(1000, 4923, 1)
-        # x = self.c1(x)
         return self.l1(x)
 
 if __name__ == "__main__":
     main()
-
 

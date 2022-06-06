@@ -65,7 +65,7 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chi" and next_event["player"] == player_idx:
                     did_chii = True
 
-                batch_states[0].append(round_state._player_states[player_idx])
+                batch_states[0].append(deepcopy(round_state._player_states[player_idx]))
                 batch_actions[0].append(int(did_chii))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
@@ -89,7 +89,7 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "pon" and next_event["player"] == player_idx:
                         did_pon = True
 
-                    batch_states[1].append(round_state._player_states[player_idx])
+                    batch_states[1].append(deepcopy(round_state._player_states[player_idx]))
                     batch_actions[1].append(int(did_pon))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
@@ -109,7 +109,7 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chakan" and next_event["player"] == player_idx:
                     did_chakan = True
 
-                batch_states[2].append(round_state._player_states[player_idx])
+                batch_states[2].append(deepcopy(round_state._player_states[player_idx]))
                 batch_actions[2].append(int(did_chakan))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
@@ -132,7 +132,7 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "kan" and next_event["player"] == player_idx:
                         did_kan = True
 
-                    batch_states[2].append(round_state._player_states[player_idx])
+                    batch_states[2].append(deepcopy(round_state._player_states[player_idx]))
                     batch_actions[2].append(int(did_kan))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
@@ -149,7 +149,7 @@ class GameLogParser:
                     if round_state._riichis_dict[player_idx] == turn:
                         did_riichi = True
                 
-                batch_states[3].append(round_state._player_states[player_idx])
+                batch_states[3].append(deepcopy(round_state._player_states[player_idx]))
                 batch_actions[3].append(int(did_riichi))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
@@ -160,7 +160,7 @@ class GameLogParser:
             if round_state._others_riichi_status[player_idx] == 1:
                 return
 
-            batch_states[4].append(round_state._player_states[player_idx])
+            batch_states[4].append(deepcopy(round_state._player_states[player_idx]))
             batch_actions[4].append(event["tile"])
 
             logging.debug(f'{round["round"]} | player{player_idx}, turn={round_state._player_states[player_idx]._turn + 1}, discard={event["tile"]}')
@@ -667,15 +667,10 @@ batch_size = 100 # game
 batch_states = [[], [], [], [], []]
 batch_actions = [[], [], [], [], []]
 
-# MAX_CHII_DATA = 750000 
-# MAX_PON_DATA = 750000 
-# MAX_KAN_DATA = 200000 
-# MAX_RIICHI_DATA = 300000
-# MAX_DISCARD_DATA = 1000000
-MAX_CHII_DATA = 100
-MAX_PON_DATA = 100
-MAX_KAN_DATA = 100
-MAX_RIICHI_DATA = 100
+MAX_CHII_DATA = 0
+MAX_PON_DATA = 0 
+MAX_KAN_DATA = 0
+MAX_RIICHI_DATA = 0
 MAX_DISCARD_DATA = 200000 
 MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
 
