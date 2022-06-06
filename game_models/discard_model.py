@@ -6,7 +6,6 @@ import torch.nn as nn
 from tqdm import tqdm
 import sys
 import wandb
-import torch.optim as optim
 
 wandb.init(project="riichi-mahjong", entity="shuthus")
 
@@ -25,6 +24,7 @@ DATASET_SIZE = 20000 # set to None if you want to load everything
 BATCH_SIZE = 8000 
 SAVE_INTERVAL = 200 
 
+# hyperparams
 LEARNING_RATE = 1
 EPOCHS = 200
 
@@ -40,9 +40,7 @@ def main():
     print(f"Using {device}...")
 
     net = Net().to(device)
-    optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss()
-
 
     wandb.config = {
     "learning_rate": LEARNING_RATE,
@@ -77,7 +75,7 @@ def main():
             "Train acc": 100 * (train_correct / n_size),
         })
 
-        if epoch % SAVE_INTERVAL == SAVE_INTERVAL-1:
+        if epoch % SAVE_INTERVAL == 0 or epoch == EPOCHS - 1:
             torch.save(net.state_dict(), f"D:/models/discard_model_{epoch}")
 
 class Net(nn.Module):
