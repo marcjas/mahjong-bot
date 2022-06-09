@@ -1,6 +1,6 @@
 import math
 from datasets import DiscardDataset
-from torch.utils.data import DataLoader 
+from torch.utils.data import DataLoader, random_split
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -18,10 +18,11 @@ tiles = [
     "wd", "gd", "rd"
 ]
 
-USE_WANDB = False
-DATASET_SIZE = 20000 # set to None if you want to load everything
+USE_WANDB = True
+SAVE_INTERVAL = None # set to None if you don't want to torch.save(), other every x epochs
+TRAIN_DATASET_SIZE = 20000
+TEST_DATASET_SIZE = 5000
 BATCH_SIZE = 8000 
-SAVE_INTERVAL = None # set to None if you don't want to torch.save()
 
 # hyperparams
 LEARNING_RATE = 1
@@ -30,12 +31,16 @@ EPOCHS = 200
 if USE_WANDB: wandb.init(project="riichi-mahjong", entity="shuthus")
 
 def main():
-    if DATASET_SIZE is not None and BATCH_SIZE > DATASET_SIZE:
+    if TRAIN_DATASET_SIZE is not None and BATCH_SIZE > TRAIN_DATASET_SIZE:
         print("BATCH_SIZE can't be smaller than DATASET_SIZE")
         sys.exit(-1)
 
-    dataset = DiscardDataset(DATASET_SIZE)
-    dataloader =  DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    # total_size = 
+    dataset = DiscardDataset(TRAIN_DATASET_SIZE + TEST_DATASET_SIZE)
+    train_dataset, test_dataset = random_split(dataset, (TRAIN_DATASET_SIZE, TEST_DATASET_SIZE))
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    print(f"Train size: {len(train_dataset)}, test size: {len(test_dataset)}")
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}...")
@@ -43,13 +48,14 @@ def main():
     net = Net().to(device)
     criterion = nn.CrossEntropyLoss()
 
-    n_batches = math.ceil(dataset.len / BATCH_SIZE)
-    n_size = dataset.len
+    train_n_batches = math.ceil(len(train_dataset) / BATCH_SIZE)
+    train_n_size = len(train_dataset)
+    test_n_size = len(test_dataset)
 
     for epoch in tqdm(range(EPOCHS)):
         total_epoch_train_loss = 0
         train_correct = 0
-        for x, y in dataloader:
+        for x, y in train_dataloader:
             X_train, y_train = x.to(device), y.squeeze().to(device)
             y_pred = net(X_train)
 
@@ -64,10 +70,19 @@ def main():
             predictions = torch.argmax(nn.Softmax(dim=1)(y_pred), dim=1)
             train_correct += (predictions == y_train).float().sum()
 
+        test_correct = 0
+        for x, y in test_dataloader:
+            X_test, y_test = x.to(device), y.squeeze().to(device)
+            y_pred = net(X_test)
+
+            predictions = torch.argmax(nn.Softmax(dim=1)(y_pred), dim=1)
+            test_correct += (predictions == y_test).float().sum()
+
         if USE_WANDB: wandb.log({
             "Epoch": epoch,
-            "Train loss": total_epoch_train_loss / n_batches,
-            "Train acc": 100 * (train_correct / n_size),
+            "Train loss": total_epoch_train_loss / train_n_batches,
+            "Train acc": 100 * (train_correct / train_n_size),
+            "Test acc": 100 * (test_correct / test_n_size),
         })
 
         if SAVE_INTERVAL is not None and (epoch % SAVE_INTERVAL == 0 or epoch == EPOCHS - 1):
@@ -84,8 +99,6 @@ class Net(nn.Module):
         in_features = 4923
         self.l1 = nn.Sequential(
             nn.Linear(in_features, in_features*2),
-            nn.ReLU(),
-            nn.Linear(in_features*2, in_features*2),
             nn.ReLU(),
             nn.Linear(in_features*2, 34),
         )
