@@ -47,13 +47,6 @@ def main():
     train_n_size = len(train_dataset)
     test_n_size = len(test_dataset)
 
-    if USE_WANDB: wandb.log({
-        "Epoch": 0,
-        "Train loss": 0,
-        "Train acc": 0,
-        "Test acc": 0, 
-    })
-
     timestamp = int(time.time())
 
     for epoch in tqdm(range(1, EPOCHS + 1)):
