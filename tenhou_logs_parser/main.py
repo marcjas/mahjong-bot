@@ -663,14 +663,14 @@ chii_combinations = {
     "9": ["78"],
 }
 
-batch_size = 100 # game
+batch_size = 1000
 batch_states = [[], [], [], [], []]
 batch_actions = [[], [], [], [], []]
 
-MAX_CHII_DATA = 0
-MAX_PON_DATA = 0 
-MAX_KAN_DATA = 0
-MAX_RIICHI_DATA = 0
+MAX_CHII_DATA = 200000
+MAX_PON_DATA = 200000
+MAX_KAN_DATA = 200000
+MAX_RIICHI_DATA = 200000
 MAX_DISCARD_DATA = 200000 
 MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
 
