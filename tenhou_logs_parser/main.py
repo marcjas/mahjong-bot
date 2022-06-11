@@ -65,7 +65,7 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chi" and next_event["player"] == player_idx:
                     did_chii = True
 
-                batch_states[0].append(round_state._player_states[player_idx])
+                batch_states[0].append(deepcopy(round_state._player_states[player_idx]))
                 batch_actions[0].append(int(did_chii))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
@@ -89,7 +89,7 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "pon" and next_event["player"] == player_idx:
                         did_pon = True
 
-                    batch_states[1].append(round_state._player_states[player_idx])
+                    batch_states[1].append(deepcopy(round_state._player_states[player_idx]))
                     batch_actions[1].append(int(did_pon))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
@@ -109,7 +109,7 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chakan" and next_event["player"] == player_idx:
                     did_chakan = True
 
-                batch_states[2].append(round_state._player_states[player_idx])
+                batch_states[2].append(deepcopy(round_state._player_states[player_idx]))
                 batch_actions[2].append(int(did_chakan))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
@@ -132,7 +132,7 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "kan" and next_event["player"] == player_idx:
                         did_kan = True
 
-                    batch_states[2].append(round_state._player_states[player_idx])
+                    batch_states[2].append(deepcopy(round_state._player_states[player_idx]))
                     batch_actions[2].append(int(did_kan))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
@@ -149,7 +149,7 @@ class GameLogParser:
                     if round_state._riichis_dict[player_idx] == turn:
                         did_riichi = True
                 
-                batch_states[3].append(round_state._player_states[player_idx])
+                batch_states[3].append(deepcopy(round_state._player_states[player_idx]))
                 batch_actions[3].append(int(did_riichi))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
@@ -160,7 +160,7 @@ class GameLogParser:
             if round_state._others_riichi_status[player_idx] == 1:
                 return
 
-            batch_states[4].append(round_state._player_states[player_idx])
+            batch_states[4].append(deepcopy(round_state._player_states[player_idx]))
             batch_actions[4].append(event["tile"])
 
             logging.debug(f'{round["round"]} | player{player_idx}, turn={round_state._player_states[player_idx]._turn + 1}, discard={event["tile"]}')
@@ -291,37 +291,35 @@ class PlayerState:
 
     def to_processed_features_list(self):
         """
-        34 x 4
-        34 x 30
-        34 x 30 x 3
-        34 x 4
-        34 x 4 x 3
-        34 x 4
-        12
-        4
-        4
-        4
-        3
+        private_tiles:                  34 x 4
+        private_discarded_tiles:        34 x 30
+        others_discarded_tiles:         34 x 30 x 3
+        private_open_tiles:             34 x 4
+        others_open_tiles:              34 x 4 x 3
+        dora_indicators:                34 x 4
+        round_name:                     12
+        player_scores:                  4
+        self_wind:                      4
+        aka_doras_in_hand:              4
+        riichi_status:                  3
         """
 
         # self._private_tiles
         private_tiles = [0] * 34 * 4
         mapped_private_tiles = list(map(lambda x: x[0:2], self._private_tiles))
         for tile in mapped_private_tiles:
-            offset = 0
             idx = tiles.index(tile)
-            while private_tiles[idx + offset] == 1:
-                offset += 34
-                if private_tiles[idx + offset] == 0:
+            for i in range(4):
+                if private_tiles[idx + i * 34] == 0:
+                    private_tiles[idx + i * 34] = 1
                     break
-            private_tiles[idx + offset] = 1
 
         # self._private_discarded_tiles
         private_discarded_tiles = [0] * 34 * 30
         mapped_private_discarded_tiles = list(map(lambda x: x[0:2], self._private_discarded_tiles))
         for i, tile in enumerate(mapped_private_discarded_tiles):
             idx = tiles.index(tile)
-            private_discarded_tiles[idx + (i * 32)] = 1
+            private_discarded_tiles[idx + (i * 34)] = 1
 
         # self._others_discarded_tiles
         private_others_discarded_tiles = [0] * 34 * 30 * 3
@@ -329,7 +327,7 @@ class PlayerState:
             mapped_player_discarded_tiles = list(map(lambda x: x[0:2], discarded_tiles)) 
             for i, tile in enumerate(mapped_player_discarded_tiles):
                 idx = tiles.index(tile)
-                private_others_discarded_tiles[idx + (i * 32) + (player_i * 34 * 30)] = 1
+                private_others_discarded_tiles[idx + (i * 34) + (player_i * 34 * 30)] = 1
 
         # self._private_open_tiles
         private_open_tiles = [0] * 34 * 4
@@ -337,7 +335,10 @@ class PlayerState:
             mapped_meld = list(map(lambda x: x[0:2], meld))
             for tile in mapped_meld:
                 idx = tiles.index(tile)
-                private_open_tiles[idx + (i * 32)] = 1
+                for j in range(4):
+                    if private_open_tiles[idx + (j * 34)] == 0:
+                        private_open_tiles[idx + (j * 34)] = 1
+                        break
 
         # self._others_open_tiles
         others_open_tiles = [0] * 34 * 4 * 3
@@ -346,19 +347,20 @@ class PlayerState:
                 mapped_meld = list(map(lambda x: x[0:2], meld))
                 for tile in mapped_meld:
                     idx = tiles.index(tile)
-                    others_open_tiles[idx + (i * 32 + (player_i * 34 * 4))] = 1
+                    for j in range(4):
+                        if others_open_tiles[idx + (j * 34 + (player_i * 34 * 4))] == 0:
+                            others_open_tiles[idx + (j * 34 + (player_i * 34 * 4))] = 1
+                            break
 
         # self._dora_indicators
         dora_indicators = [0] * 34 * 4
         mapped_dora_indicators = list(map(lambda x: x[0:2], self._dora_indicators))
         for tile in mapped_dora_indicators:
-            offset = 0
             idx = tiles.index(tile)
-            while private_tiles[idx + offset] == 1:
-                offset += 34
-                if private_tiles[idx + offset] == 0:
+            for i in range(4):
+                if dora_indicators[idx + i * 34] == 0:
+                    dora_indicators[idx + i * 34] = 1
                     break
-            dora_indicators[idx + offset] = 1
 
         # self._round_name
         round_name = [0] * 12
@@ -372,11 +374,10 @@ class PlayerState:
         for i, player_score in enumerate(self._player_scores):
             if player_score >= 1000:
                 player_scores[i] = 1
-                continue
-            elif player_score <= 1000:
+            elif player_score <= 0:
                 player_scores[i] = 0
-                continue
-            player_scores[i] = player_score / 1000
+            else:
+                player_scores[i] = player_score / 1000
 
         # self._self_wind
         self_wind = [0] * 4
@@ -662,20 +663,15 @@ chii_combinations = {
     "9": ["78"],
 }
 
-batch_size = 50 # game
+batch_size = 1000
 batch_states = [[], [], [], [], []]
 batch_actions = [[], [], [], [], []]
 
-# MAX_CHII_DATA = 750000 
-# MAX_PON_DATA = 750000 
-# MAX_KAN_DATA = 200000 
-# MAX_RIICHI_DATA = 300000
-# MAX_DISCARD_DATA = 1000000
-MAX_CHII_DATA = 100
-MAX_PON_DATA = 100
-MAX_KAN_DATA = 100
-MAX_RIICHI_DATA = 100
-MAX_DISCARD_DATA = 10000
+MAX_CHII_DATA = 200000
+MAX_PON_DATA = 200000
+MAX_KAN_DATA = 200000
+MAX_RIICHI_DATA = 200000
+MAX_DISCARD_DATA = 200000 
 MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
 
 def get_metadata():
@@ -708,7 +704,7 @@ def export():
                 vector_length = 4923 + 1
             case 4: 
                 memmap_file_name = "../data/model_data/discard_data.dat"
-                vector_length = 4923 + 34
+                vector_length = 4923 + 1
             case _: sys.exit(-1)
 
         # shared=True allows us to save the tensor to disk as we perform in place modifications to it
@@ -719,7 +715,7 @@ def export():
             if metadata[i] >= MAX_DATA[i]:
                 break
             if i == 4:
-                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + transform_hand([action]))
+                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [tiles.index(action[0:2])])
             else:
                 memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [action])
             metadata[i] += 1
