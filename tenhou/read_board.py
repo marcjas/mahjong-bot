@@ -272,8 +272,22 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
                        sum(board[cy+icon_height-1, cx]) < 440 or \
                        sum(board[cy, cx + icon_width-1]) < 440 or \
                        sum(board[cy+icon_height-1, cx+icon_width-1]) < 440:
-                        # Found no tile ready to be called
-                        break
+                        # Found no regular tile ready to be called
+                        rx = rx + [5, 4, -5, -4][owner]
+                        ry = ry + [4, -4, -4, 4][owner]
+                        if sum(board[ry, rx]) < 440 or \
+                           sum(board[ry+ricon_height-1, rx]) < 440 or \
+                           sum(board[ry, rx + ricon_width-1]) < 440 or \
+                           sum(board[ry+ricon_height-1, rx+ricon_width-1]) < 440:
+                            # Found no riichi tile ready to be called
+                        else:
+                            riichi = True
+                            if riichi_index >= 0:
+                                print("Found two riichi tiles, this is impossible.")
+                                continue
+                            riichi_index = len(tile_images)
+                            tile_img = board[ry:(ry+ricon_height), rx:(rx+ricon_width)]
+                            tile_img = cv2.rotate(tile_img, cv2.ROTATE_90_CLOCKWISE)
                     else:
                         calling_tile = True
                         tile_img = board[cy:(cy+icon_height), cx:(cx+icon_width)]
