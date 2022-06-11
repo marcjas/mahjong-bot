@@ -33,13 +33,7 @@ class PonDataset(Dataset):
         return self.len 
 
     def __getitem__(self, idx):
-        target = [0, 0]
-        if self.data[idx][-1:] == 0:
-            target[0] = 1
-        else:
-            target[1] = 1
-
-        return self.data[idx][0:-1], torch.FloatTensor(target)
+        return self.data[idx][0:-1], self.data[idx][-1:]
 
 class KanDataset(Dataset):
     def __init__(self, size=None):

@@ -8,16 +8,15 @@ from tqdm import tqdm
 import wandb
 import time
 import os
-import sys
 
 # config
-USE_WANDB = True
-SAVE_INTERVAL = None # set to None if you don't want to torch.save()
+USE_WANDB = False
+SAVE_INTERVAL = 200 # set to None if you don't want to torch.save()
 SAVE_PATH = "D:/models"
 RNG_SEED = 1234 
-TRAIN_DATASET_SIZE = 20000
-TEST_DATASET_SIZE = 5000
-BATCH_SIZE = 5000 
+TRAIN_DATASET_SIZE = 1000
+TEST_DATASET_SIZE = 100 
+BATCH_SIZE = 1000 
 
 # hyperparams
 LEARNING_RATE = 1
@@ -28,21 +27,26 @@ def main(model_type):
 
     train_dataloader, test_dataloader = get_dataloaders(model_type)
 
-    if USE_WANDB: wandb.init(project="riichi-mahjong", entity="shuthus", tags=[model_type], config={"LR":LEARNING_RATE,"TRAIN_SIZE":TRAIN_DATASET_SIZE,"TEST_SIZE":TEST_DATASET_SIZE})
+    if USE_WANDB: 
+        config = {
+            "LR": LEARNING_RATE,
+            "TRAIN_SIZE": TRAIN_DATASET_SIZE,
+            "TEST_SIZE": TEST_DATASET_SIZE
+        }
+        wandb.init(project="riichi-mahjong", entity="shuthus", tags=[model_type], config=config)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}")
 
     match model_type:
-        case "chii": pass
-        case "pon": create_pon_model(device, train_dataloader, test_dataloader)
-        case "kan": pass
-        case "riichi": pass
+        case ("chii" | "pon" | "kan"): create_call_model(model_type, device, train_dataloader, test_dataloader)
+        case "riichi": create_riichi_model(device, train_dataloader, train_dataloader)
         case "discard": create_discard_model(device, train_dataloader, test_dataloader)
 
-def create_pon_model(device, train_dataloader, test_dataloader, start_time=int(time.time())):
-    net = PonNN().to(device)
-    criterion = nn.BCEWithLogitsLoss()
+def create_call_model(model_type, device, train_dataloader, test_dataloader, start_time=int(time.time())):
+    net = CallNN().to(device)
+    optimizer = torch.optim.SGD(net.parameters(), lr=LEARNING_RATE)
+    criterion = nn.BCELoss()
 
     train_n_batches = math.ceil(TRAIN_DATASET_SIZE / BATCH_SIZE)
 
@@ -55,33 +59,22 @@ def create_pon_model(device, train_dataloader, test_dataloader, start_time=int(t
 
             loss = criterion(y_pred, y_train)
             total_epoch_train_loss += loss
-            net.zero_grad() # clear gradients of model parameters
-            loss.backward() # update weights
-            with torch.no_grad():
-                for param in net.parameters():
-                    param -= LEARNING_RATE * param.grad
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
             if epoch % 10 == 0 or epoch == EPOCHS:
-                predictions = torch.argmax(torch.sigmoid(y_pred), dim=1).unsqueeze(1)
-                targets = torch.argmax(y_train, dim=1)
-
-                for i in range(len(predictions)):
-                    if predictions[i] == targets[i]:
-                        train_correct += 1
-
+                predictions = (y_pred > 0.5).float()*1
+                train_correct += (predictions == y_train).float().sum()
 
         if epoch % 10 == 0 or epoch == EPOCHS:
             test_correct = 0
             for x, y in test_dataloader:
-                X_test, y_test = x.to(device), y.squeeze().to(device)
+                X_test, y_test = x.to(device), y.to(device)
                 y_pred = net(X_test)
 
-                predictions = torch.argmax(torch.sigmoid(y_pred), dim=1).unsqueeze(1)
-                targets = torch.argmax(y_test, dim=1)
-
-                for i in range(len(predictions)):
-                    if predictions[i] == targets[i]:
-                        test_correct += 1
+                predictions = (y_pred > 0.5).float()*1
+                test_correct += (predictions == y_test).float().sum()
 
             if USE_WANDB: wandb.log({
                 "Epoch": epoch,
@@ -90,9 +83,9 @@ def create_pon_model(device, train_dataloader, test_dataloader, start_time=int(t
                 "Test acc": 100 * (test_correct / TEST_DATASET_SIZE),
             })
 
-        save_model(net, "pon", start_time, epoch)
+        save_model(net, model_type, start_time, epoch)
 
-class PonNN(nn.Module):
+class CallNN(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -100,7 +93,65 @@ class PonNN(nn.Module):
         self.l1 = nn.Sequential(
             nn.Linear(in_features, in_features*2),
             nn.ReLU(),
-            nn.Linear(in_features*2, 2),
+            nn.Linear(in_features*2, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        return self.l1(x)
+
+def create_riichi_model(device, train_dataloader, test_dataloader, start_time=int(time.time())):
+    net = RiichiNN().to(device)
+    optimizer = torch.optim.SGD(net.parameters(), lr=LEARNING_RATE)
+    criterion = nn.BCELoss()
+
+    train_n_batches = math.ceil(TRAIN_DATASET_SIZE / BATCH_SIZE)
+
+    for epoch in tqdm(range(1, EPOCHS + 1)):
+        total_epoch_train_loss = 0
+        train_correct = 0
+        for x, y in train_dataloader:
+            X_train, y_train = x.to(device), y.to(device)
+            y_pred = net(X_train)
+
+            loss = criterion(y_pred, y_train)
+            total_epoch_train_loss += loss
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if epoch % 10 == 0 or epoch == EPOCHS:
+                predictions = (y_pred > 0.5).float()*1
+                train_correct += (predictions == y_train).float().sum()
+
+        if epoch % 10 == 0 or epoch == EPOCHS:
+            test_correct = 0
+            for x, y in test_dataloader:
+                X_test, y_test = x.to(device), y.to(device)
+                y_pred = net(X_test)
+
+                predictions = (y_pred > 0.5).float()*1
+                test_correct += (predictions == y_test).float().sum()
+
+            if USE_WANDB: wandb.log({
+                "Epoch": epoch,
+                "Train loss": total_epoch_train_loss / train_n_batches,
+                "Train acc": 100 * (train_correct / TRAIN_DATASET_SIZE),
+                "Test acc": 100 * (test_correct / TEST_DATASET_SIZE),
+            })
+
+        save_model(net, "riichi", start_time, epoch)
+
+class RiichiNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        in_features = 4923
+        self.l1 = nn.Sequential(
+            nn.Linear(in_features, in_features*2),
+            nn.ReLU(),
+            nn.Linear(in_features*2, 1),
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
@@ -121,8 +172,8 @@ def create_discard_model(device, train_dataloader, test_dataloader, start_time=i
 
             loss = criterion(y_pred, y_train)
             total_epoch_train_loss += loss
-            net.zero_grad() # clear gradients of model parameters
-            loss.backward() # update weights
+            net.zero_grad()
+            loss.backward()
             with torch.no_grad():
                 for param in net.parameters():
                     param -= LEARNING_RATE * param.grad

@@ -1,16 +1,24 @@
-from main import PonNN, DiscardNN
+from main import CallNN, RiichiNN, DiscardNN
 import torch
 import torch.nn as nn
 
-
-class PonModel:
+class CallModel: 
     def __init__(self, model_path):
-        self.model = PonNN()
+        self.model = CallNN()
         self.model.load_state_dict(torch.load(model_path))
 
     def predict(self, X):
-        pass
+        X = torch.FloatTensor(X)
+        return (self.model(X) > 0.5).item()
 
+class RiichiModel:
+    def __init__(self, model_path):
+        self.model = RiichiNN()
+        self.model.load_state_dict(torch.load(model_path))
+
+    def predict(self, X):
+        X = torch.FloatTensor(X)
+        return (self.model(X) > 0.5).item()
 
 class DiscardModel:
     def __init__(self, model_path):
