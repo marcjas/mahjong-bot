@@ -1,23 +1,72 @@
 import sys
 import logging
 import argparse
-import pickle
 from tqdm import tqdm
 from copy import deepcopy
 import re
-from typing import Dict
 import glob 
 import torch
+import os
 
 from tenhou_decoder import Game
 
 LOGGING_LEVEL = logging.INFO
 
+# config
+BATCH_SIZE = 1000
+EXPORT_DATA = True
+MAX_DATA = {
+    "chii": 200000,
+    "pon": 200000,
+    "kan": 50000,
+    "riichi": 50000,
+    "discard": 200000,
+}
+
+class Data:
+    def __init__(self):
+        self.data = {
+            "chii": { "states": [], "actions": [], "writes": 0 },
+            "pon": { "states": [], "actions": [], "writes": 0 },
+            "kan": { "states": [], "actions": [], "writes": 0 },
+            "riichi": { "states": [], "actions": [], "writes": 0 },
+            "discard": { "states": [], "actions": [], "writes": 0 },
+        }
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def export(self):
+        for key in self:
+            memmap_fn = f"../data/model_data/{key}_data.dat"
+            vector_len = 4515 + 1
+            
+            storage = torch.FloatStorage.from_file(memmap_fn, shared=True, size=MAX_DATA[key] * vector_len)
+            memmap = torch.FloatTensor(storage).reshape(MAX_DATA[key], vector_len)
+
+            data = self[key]
+            for state, action in zip(data["states"], data["actions"]):
+                if data["writes"] >= MAX_DATA[key]:
+                    break
+                if key == "discard":
+                    memmap[data["writes"]] = torch.FloatTensor(state.to_features_list() + [tiles.index(action[0:2])])
+                else:
+                    memmap[data["writes"]] = torch.FloatTensor(state.to_features_list() + [action])
+                data["writes"] += 1
+
+            data["states"] = []
+            data["actions"] = []
+
+        print(f'Chii: {self["chii"]["writes"]}, pon: {self["pon"]["writes"]}, kan: {self["kan"]["writes"]}, riichi: {self["riichi"]["writes"]}, discard: {self["discard"]["writes"]}')
+
 class GameLogParser:
-    def __init__(self, data: Dict):
+    def __init__(self, data: Data, game_data):
         self._data = data
-        self._players = data["players"]
-        self._rounds = data["rounds"]
+        self._players = game_data["players"]
+        self._rounds = game_data["rounds"]
 
     def get_nn_input(self, get_chii_model_input=True, get_pon_model_input=True, get_kan_model_input=True, get_riichi_model_input=True, get_discard_model_input=True):
         player_scores = [250, 250, 250, 250]
@@ -65,8 +114,8 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chi" and next_event["player"] == player_idx:
                     did_chii = True
 
-                batch_states[0].append(deepcopy(round_state._player_states[player_idx]))
-                batch_actions[0].append(int(did_chii))
+                self._data["chii"]["states"].append(deepcopy(round_state._player_states[player_idx]))
+                self._data["chii"]["actions"].append(int(did_chii))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chii={did_chii}')
 
@@ -89,8 +138,8 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "pon" and next_event["player"] == player_idx:
                         did_pon = True
 
-                    batch_states[1].append(deepcopy(round_state._player_states[player_idx]))
-                    batch_actions[1].append(int(did_pon))
+                    self._data["pon"]["states"].append(deepcopy(round_state._player_states[player_idx]))
+                    self._data["pon"]["actions"].append(int(did_pon))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_pon={did_pon}')
 
@@ -109,8 +158,8 @@ class GameLogParser:
                 if next_event["type"] == "Call" and next_event["meld"]["type"] == "chakan" and next_event["player"] == player_idx:
                     did_chakan = True
 
-                batch_states[2].append(deepcopy(round_state._player_states[player_idx]))
-                batch_actions[2].append(int(did_chakan))
+                self._data["kan"]["states"].append(deepcopy(round_state._player_states[player_idx]))
+                self._data["kan"]["actions"].append(int(did_chakan))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_chakan={did_chakan}')
 
@@ -132,8 +181,8 @@ class GameLogParser:
                     if next_event["type"] == "Call" and next_event["meld"]["type"] == "kan" and next_event["player"] == player_idx:
                         did_kan = True
 
-                    batch_states[2].append(deepcopy(round_state._player_states[player_idx]))
-                    batch_actions[2].append(int(did_kan))
+                    self._data["kan"]["states"].append(deepcopy(round_state._player_states[player_idx]))
+                    self._data["kan"]["actions"].append(int(did_kan))
 
                     logging.debug(f'{round["round"]} | player={player_idx}, turn={round_state._player_states[player_idx]._turn}, did_kan={did_kan}')
 
@@ -149,8 +198,8 @@ class GameLogParser:
                     if round_state._riichis_dict[player_idx] == turn:
                         did_riichi = True
                 
-                batch_states[3].append(deepcopy(round_state._player_states[player_idx]))
-                batch_actions[3].append(int(did_riichi))
+                self._data["riichi"]["states"].append(deepcopy(round_state._player_states[player_idx]))
+                self._data["riichi"]["actions"].append(int(did_riichi))
 
                 logging.debug(f'{round["round"]} | player={player_idx}, turn={turn}, did_riichi={did_riichi}')
 
@@ -160,8 +209,8 @@ class GameLogParser:
             if round_state._others_riichi_status[player_idx] == 1:
                 return
 
-            batch_states[4].append(deepcopy(round_state._player_states[player_idx]))
-            batch_actions[4].append(event["tile"])
+            self._data["discard"]["states"].append(deepcopy(round_state._player_states[player_idx]))
+            self._data["discard"]["actions"].append(event["tile"])
 
             logging.debug(f'{round["round"]} | player{player_idx}, turn={round_state._player_states[player_idx]._turn + 1}, discard={event["tile"]}')
 
@@ -274,26 +323,10 @@ class PlayerState:
         self.update_aka_dora_count_in_hand()
 
     def to_features_list(self):
-        return [
-            self._private_tiles,
-            self._private_discarded_tiles,
-            self._others_discarded_tiles,
-            self._private_open_tiles,
-            self._others_open_tiles,
-            self._dora_indicators,
-            self._round_name,
-            self._player_scores,
-            self._self_wind,
-            self._aka_doras_in_hand,
-            [self._riichi_status[i] for i in self._others_order]
-        ]
-
-
-    def to_processed_features_list(self):
         """
         private_tiles:                  34 x 4
-        private_discarded_tiles:        34 x 30
-        others_discarded_tiles:         34 x 30 x 3
+        private_discarded_tiles:        34 x 27
+        others_discarded_tiles:         34 x 27 x 3
         private_open_tiles:             34 x 4
         others_open_tiles:              34 x 4 x 3
         dora_indicators:                34 x 4
@@ -315,19 +348,19 @@ class PlayerState:
                     break
 
         # self._private_discarded_tiles
-        private_discarded_tiles = [0] * 34 * 30
+        private_discarded_tiles = [0] * 34 * 27
         mapped_private_discarded_tiles = list(map(lambda x: x[0:2], self._private_discarded_tiles))
         for i, tile in enumerate(mapped_private_discarded_tiles):
             idx = tiles.index(tile)
             private_discarded_tiles[idx + (i * 34)] = 1
 
         # self._others_discarded_tiles
-        private_others_discarded_tiles = [0] * 34 * 30 * 3
+        private_others_discarded_tiles = [0] * 34 * 27 * 3
         for player_i, discarded_tiles in enumerate(self._others_discarded_tiles):
             mapped_player_discarded_tiles = list(map(lambda x: x[0:2], discarded_tiles)) 
             for i, tile in enumerate(mapped_player_discarded_tiles):
                 idx = tiles.index(tile)
-                private_others_discarded_tiles[idx + (i * 34) + (player_i * 34 * 30)] = 1
+                private_others_discarded_tiles[idx + (i * 34) + (player_i * 34 * 27)] = 1
 
         # self._private_open_tiles
         private_open_tiles = [0] * 34 * 4
@@ -417,7 +450,6 @@ class PlayerState:
     def discard(self, tile):
         self._private_tiles.remove(tile)
         self._discarded_tiles[self._player_idx].append(tile)
-
         self._turn += 1
 
     def draw(self, tile):
@@ -607,13 +639,11 @@ class PlayerState:
         isolated_count = sum(tiles)
 
         return (mentsu_count, pair_count, 0, isolated_count)
-        
     
-
     def __str__(self):
         return (
             "---------------------------------------\n"
-            f"_private_tiles: {sort_hand(self._private_tiles)}\n"
+            f"_private_tiles: {self._private_tiles}\n"
             f"_private_discarded_tiles: {self._private_discarded_tiles}\n"
             f"_others_discarded_tiles: {self._others_discarded_tiles}\n"
             f"_private_open_tiles: {self._private_open_tiles}\n"
@@ -636,9 +666,6 @@ def transform_hand(hand):
         new_hand[idx] += 1
 
     return new_hand
-
-def sort_hand(tiles):
-    return sorted(tiles, key = lambda x: (x[1], x[0]))
 
 def decode_tile(tile_code):
     TILES = """
@@ -663,87 +690,25 @@ chii_combinations = {
     "9": ["78"],
 }
 
-batch_size = 1000
-batch_states = [[], [], [], [], []]
-batch_actions = [[], [], [], [], []]
-
-MAX_CHII_DATA = 200000
-MAX_PON_DATA = 200000
-MAX_KAN_DATA = 200000
-MAX_RIICHI_DATA = 200000
-MAX_DISCARD_DATA = 200000 
-MAX_DATA = [MAX_CHII_DATA, MAX_PON_DATA, MAX_KAN_DATA, MAX_RIICHI_DATA, MAX_DISCARD_DATA]
-
-def get_metadata():
-    try:
-        metadata = pickle.load(open("metadata.pickle", "rb"))
-    except (OSError, IOError) as error:
-        metadata = [0, 0, 0, 0, 0]
-        pickle.dump(metadata, open("metadata.pickle", "wb"))
-
-    return metadata
-
-def update_metadata(new_metadata):
-    pickle.dump(new_metadata, open("metadata.pickle", "wb"))
-
-def export():
-    metadata = get_metadata()
-    for i, (states, actions) in enumerate(zip(batch_states, batch_actions)):  
-        match i:
-            case 0: 
-                memmap_file_name = "../data/model_data/chii_data.dat"
-                vector_length = 4923 + 1
-            case 1: 
-                memmap_file_name = "../data/model_data/pon_data.dat"
-                vector_length = 4923 + 1
-            case 2: 
-                memmap_file_name = "../data/model_data/kan_data.dat"
-                vector_length = 4923 + 1
-            case 3: 
-                memmap_file_name = "../data/model_data/riichi_data.dat"
-                vector_length = 4923 + 1
-            case 4: 
-                memmap_file_name = "../data/model_data/discard_data.dat"
-                vector_length = 4923 + 1
-            case _: sys.exit(-1)
-
-        # shared=True allows us to save the tensor to disk as we perform in place modifications to it
-        storage = torch.FloatStorage.from_file(memmap_file_name, shared=True, size=MAX_DATA[i] * vector_length)
-        memmap = torch.FloatTensor(storage).reshape(MAX_DATA[i], vector_length)
-
-        for state, action in zip(states, actions):
-            if metadata[i] >= MAX_DATA[i]:
-                break
-            if i == 4:
-                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [tiles.index(action[0:2])])
-            else:
-                memmap[metadata[i]] = torch.FloatTensor(state.to_processed_features_list() + [action])
-            metadata[i] += 1
-
-    update_metadata(metadata)
-    print(f".dat lengths: {metadata}")
-    print("Finished exporting")
-
-
 def main(logs_dir):
+    data = Data()
     game = Game('DEFAULT')
     
-    metadata = get_metadata()
-    print(f".dat lengths: {metadata}")
-    if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
-        print("Max data...")
-        sys.exit(-1)
-
     log_paths = glob.glob(f"{logs_dir}/**/*.xml", recursive=True)
     if len(log_paths) == 0:
         print("Found no logs...")
         sys.exit(-1)
 
-    for i in range(0, len(log_paths), batch_size):
-        batch = log_paths[i:i+batch_size] 
+    if EXPORT_DATA:
+        for key in data:
+            fn = f"../data/model_data/{key}_data.dat"
+            if os.path.exists(fn):
+                os.remove(fn)
 
-        metadata = get_metadata()
-        if sum([1 if metadata[x] >= MAX_DATA[x] else 0 for x in range(5)]) == 5:
+    for i in range(0, len(log_paths), BATCH_SIZE):
+        batch = log_paths[i:i+BATCH_SIZE] 
+
+        if sum([1 if data[key]["writes"] >= MAX_DATA[key] else 0 for key in data]) == 5:
             print("Finished collecting all data...")
             break
 
@@ -751,18 +716,12 @@ def main(logs_dir):
             game.decode(open(log_path))
             game_data = game.asdata()
 
-            parser = GameLogParser(game_data)
+            parser = GameLogParser(data, game_data)
 
-            get_data = [False if metadata[x] >= MAX_DATA[x] else True for x in range(5)]
+            get_data = [False if data[key]["writes"] >= MAX_DATA[key] else True for key in data]
             parser.get_nn_input(get_data[0], get_data[1], get_data[2], get_data[3], get_data[4])
 
-        export()
-
-        global batch_states 
-        global batch_actions 
-
-        batch_states = [[], [], [], [], []]
-        batch_actions = [[], [], [], [], []]
+        if EXPORT_DATA: data.export()
 
 if __name__ == '__main__':
     logging.basicConfig(level=LOGGING_LEVEL)
