@@ -112,6 +112,11 @@ def get_player_winds(dealer):
         winds.append((player_wind + i) % 4)
     return winds
 
+def get_player_wind(scoreboard):
+    dealer = get_dealer(scoreboard)
+    player_wind = (-dealer) % 4
+    return player_wind
+
 def get_scores(scoreboard):
     scores = [
         get_player_score(scoreboard, 102, 98, owner=0),

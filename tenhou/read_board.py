@@ -173,7 +173,8 @@ def get_open_tile_pile(board, x, y, owner=0, save_img=False):
         else:
             y -= tile_heights[(owner + 1) % 4] if sideways else tile_height
         if closed_kan_index > 0:
-            print(closed_kan_index, owner, set_index, len(open_sets))
+            pass
+            #print(closed_kan_index, owner, set_index, len(open_sets))
         if closed_kan_index == 1:
             continue
         if closed_kan_index != 3:
@@ -280,6 +281,7 @@ def get_discard_pile(board, x, y, owner=0, save_img=False):
                            sum(board[ry, rx + ricon_width-1]) < 440 or \
                            sum(board[ry+ricon_height-1, rx+ricon_width-1]) < 440:
                             # Found no riichi tile ready to be called
+                            break
                         else:
                             riichi = True
                             if riichi_index >= 0:
