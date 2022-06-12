@@ -41,7 +41,7 @@ def get_turn_player(scoreboard):
         if point[1] > point[0] + point[2]:
             return i
 
-    print("Found no turn player.")
+    #print("Found no turn player.")
     return -1
 
 def get_dealer(scoreboard):

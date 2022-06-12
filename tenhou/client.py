@@ -91,15 +91,19 @@ class PlayerState:
         ]
 
     def update(self, board, scoreboard):
-        self.private_tiles = read_board.get_player_tiles(board)
-        self.discarded_tiles = read_board.get_discarded(board)
-        self.open_tiles = read_board.get_open_tiles(board)
-        self.dora_indicators = read_board.get_doras(board)
-        self.round = self.update_round(scoreboard)
-        self.player_scores = read_scoreboard.get_scores(scoreboard)
-        self.player_wind = read_scoreboard.get_player_wind(scoreboard)
-        self.aka_doras_in_hand = self.get_aka_doras_in_hand()
-        self.opponent_riichi = [self.in_riichi(owner=i) for i in range(1,4)]
+        try:
+            self.private_tiles = read_board.get_player_tiles(board)
+            self.discarded_tiles = read_board.get_discarded(board)
+            self.open_tiles = read_board.get_open_tiles(board)
+            self.dora_indicators = read_board.get_doras(board)
+            self.round = self.update_round(scoreboard)
+            self.player_scores = read_scoreboard.get_scores(scoreboard)
+            self.player_wind = read_scoreboard.get_player_wind(scoreboard)
+            self.aka_doras_in_hand = self.get_aka_doras_in_hand()
+            self.opponent_riichi = [self.in_riichi(owner=i) for i in range(1,4)]
+            return True
+        except:
+            return False
 
     def update_round(self, scoreboard):
         wind = read_scoreboard.get_round_wind(scoreboard)
@@ -311,7 +315,8 @@ def play_auto(driver, size_mult=1):
 
         turn_player = read_scoreboard.get_turn_player(scoreboard)
         if turn_player == -1:
-            print("Not in an active round. Waiting.")
+            if not new_round:
+                print("Not in an active round. Waiting.")
             new_round = True
             time.sleep(1)
             continue
@@ -327,69 +332,69 @@ def play_auto(driver, size_mult=1):
         board = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
 
         if turn_player == 0:
-            player_state.update(board, scoreboard)
-            if not player_state.in_riichi():
-                time.sleep(0.5)
-                if find_visible_button(driver, "Tsumo") is not None:
-                    should_tsumo = True #input("Tsumo? (y/n): ")
-                    if should_tsumo:
-                        do_call(driver, "Tsumo")
-                if find_visible_button(driver, "Kan") is not None:
-                    should_call = kan_model.predict(player_state.to_features_list())
-                    do_call(driver, "Kan" if should_call else "×")
-                if find_visible_button(driver, "Riichi") is not None:
-                    should_riichi = riichi_model.predict(player_state.to_features_list())
-                    if should_riichi:
-                        do_call(driver, "Riichi")
-                hand = read_board.get_player_tiles(board)
-                discard_tile = discard_model.predict(player_state.to_features_list())
-                if discard_tile not in hand:
-                    discard_tile = discard_tile.replace("5","0")
-                if discard_tile not in hand:
-                    print("You do not have that tile.")
-                else:
-                    print("Discarding", discard_tile)
-                    do_discard(driver, hand.index(discard_tile), size_mult=size_mult)
-                while read_scoreboard.get_turn_player(scoreboard) == 0:
-                    canvases = driver.find_elements(By.TAG_NAME, "canvas")
-                    scoreboard = decode_canvas(driver, canvases[2])
-                    scoreboard = cv2.cvtColor(scoreboard, cv2.COLOR_RGB2BGR)
+            if player_state.update(board, scoreboard):
+                if not player_state.in_riichi():
                     time.sleep(0.5)
+                    if find_visible_button(driver, "Tsumo") is not None:
+                        should_tsumo = True #input("Tsumo? (y/n): ")
+                        if should_tsumo:
+                            do_call(driver, "Tsumo")
+                    if find_visible_button(driver, "Kan") is not None:
+                        should_call = kan_model.predict(player_state.to_features_list())
+                        do_call(driver, "Kan" if should_call else "×")
+                    if find_visible_button(driver, "Riichi") is not None:
+                        should_riichi = riichi_model.predict(player_state.to_features_list())
+                        if should_riichi:
+                            do_call(driver, "Riichi")
+                    hand = read_board.get_player_tiles(board)
+                    discard_tile = discard_model.predict(player_state.to_features_list())
+                    if discard_tile not in hand:
+                        discard_tile = discard_tile.replace("5","0")
+                    if discard_tile not in hand:
+                        print("You do not have that tile.")
+                    else:
+                        print("Discarding", discard_tile)
+                        do_discard(driver, hand.index(discard_tile), size_mult=size_mult)
+                    while read_scoreboard.get_turn_player(scoreboard) == 0:
+                        canvases = driver.find_elements(By.TAG_NAME, "canvas")
+                        scoreboard = decode_canvas(driver, canvases[2])
+                        scoreboard = cv2.cvtColor(scoreboard, cv2.COLOR_RGB2BGR)
+                        time.sleep(0.5)
         elif find_visible_button(driver, "Ron") is not None:
             time.sleep(0.2)
-            player_state.update(board, scoreboard)
-            should_ron = True #input("Ron? (y/n): ")
-            do_call(driver, "Ron" if should_ron else "×", manual=True)
+            if player_state.update(board, scoreboard):
+                should_ron = True #input("Ron? (y/n): ")
+                do_call(driver, "Ron" if should_ron else "×", manual=True)
         elif find_visible_button(driver, "Chii") is not None:
             time.sleep(0.2)
-            player_state.update(board, scoreboard)
-            #tile = [i for i in discarded[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
-            should_call = chii_model.predict(player_state.to_features_list())
-            do_call(driver, "Chii" if should_call else "×")
+            if player_state.update(board, scoreboard):
+                #tile = [i for i in discarded[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
+                should_call = chii_model.predict(player_state.to_features_list())
+                do_call(driver, "Chii" if should_call else "×")
         elif find_visible_button(driver, "Pon") is not None:
             time.sleep(0.2)
-            player_state.update(board, scoreboard)
-            #tile = [i for i in discarded[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
-            should_call = pon_model.predict(player_state.to_features_list())
-            do_call(driver, "Pon" if should_call else "×")
+            if player_state.update(board, scoreboard):
+                #tile = [i for i in discarded[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
+                should_call = pon_model.predict(player_state.to_features_list())
+                do_call(driver, "Pon" if should_call else "×")
         elif find_visible_button(driver, "Kan") is not None:
             time.sleep(0.2)
-            player_state.update(board, scoreboard)
-            #tile = [i for i in player_state.discarded_tiles[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
-            should_call = kan_model.predict(player_state.to_features_list())
-            do_call(driver, "Kan" if should_call else "×")
+            if player_state.update(board, scoreboard):
+                #tile = [i for i in player_state.discarded_tiles[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
+                should_call = kan_model.predict(player_state.to_features_list())
+                do_call(driver, "Kan" if should_call else "×")
         elif find_visible_button(driver, "Call") is not None:
             time.sleep(0.2)
-            player_state.update(board, scoreboard)
-            #tile = [i for i in discarded[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
-            should_call = chii_model.predict(player_state.to_features_list())
-            do_call(driver, "Call" if should_call else "×", manual=True)
+            if player_state.update(board, scoreboard):
+                #tile = [i for i in discarded[turn_player] if len(i) > 2 and "c" in i[2:]][0][:2]
+                should_call = chii_model.predict(player_state.to_features_list())
+                do_call(driver, "Call" if should_call else "×", manual=True)
         if find_visible_button(driver, "Tsumo") is not None:
             time.sleep(0.2)
-            player_state.update(board, scoreboard)
-            should_tsumo = True #input("Tsumo? (y/n): ")
-            if should_tsumo:
-                do_call(driver, "Tsumo")
+            if player_state.update(board, scoreboard):
+                should_tsumo = True #input("Tsumo? (y/n): ")
+                if should_tsumo:
+                    do_call(driver, "Tsumo")
 
 def reset_cursor(driver):
     canvases = driver.find_elements(By.TAG_NAME, "canvas")
