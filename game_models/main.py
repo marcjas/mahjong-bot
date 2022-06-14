@@ -10,13 +10,13 @@ import time
 import os
 
 # config
-USE_WANDB = False
-SAVE_INTERVAL = 200 # set to None if you don't want to torch.save()
-SAVE_PATH = "D:/models"
+USE_WANDB = True
+SAVE_INTERVAL = 200 
+SAVE_PATH = "../models"
 RNG_SEED = 1234 
-TRAIN_DATASET_SIZE = 1000
-TEST_DATASET_SIZE = 100 
-BATCH_SIZE = 1000 
+TRAIN_DATASET_SIZE = 20000
+TEST_DATASET_SIZE = 1000 
+BATCH_SIZE = 7000 
 
 # hyperparams
 LEARNING_RATE = 1
@@ -89,7 +89,7 @@ class CallNN(nn.Module):
     def __init__(self):
         super().__init__()
 
-        in_features = 4923
+        in_features = 4515
         self.l1 = nn.Sequential(
             nn.Linear(in_features, in_features*2),
             nn.ReLU(),
@@ -146,7 +146,7 @@ class RiichiNN(nn.Module):
     def __init__(self):
         super().__init__()
 
-        in_features = 4923
+        in_features = 4515
         self.l1 = nn.Sequential(
             nn.Linear(in_features, in_features*2),
             nn.ReLU(),
@@ -204,7 +204,7 @@ class DiscardNN(nn.Module):
     def __init__(self):
         super().__init__()
 
-        in_features = 4923
+        in_features = 4515
         self.l1 = nn.Sequential(
             nn.Linear(in_features, in_features*2),
             nn.ReLU(),
