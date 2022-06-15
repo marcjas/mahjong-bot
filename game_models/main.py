@@ -14,9 +14,9 @@ USE_WANDB = True
 SAVE_INTERVAL = 200 
 SAVE_PATH = "../models"
 RNG_SEED = 1234 
-TRAIN_DATASET_SIZE = 20000
-TEST_DATASET_SIZE = 1000 
-BATCH_SIZE = 7000 
+TRAIN_DATASET_SIZE = 300000
+TEST_DATASET_SIZE = 100000 
+BATCH_SIZE = 100
 
 # hyperparams
 LEARNING_RATE = 1
@@ -182,7 +182,7 @@ def create_discard_model(device, train_dataloader, test_dataloader, start_time=i
                 predictions = torch.argmax(nn.Softmax(dim=1)(y_pred), dim=1)
                 train_correct += (predictions == y_train).float().sum()
 
-        if epoch % 10 == 0 or epoch == EPOCHS:
+        if True: #epoch % 10 == 0 or epoch == EPOCHS:
             test_correct = 0
             for x, y in test_dataloader:
                 X_test, y_test = x.to(device), y.squeeze().to(device)
@@ -190,9 +190,12 @@ def create_discard_model(device, train_dataloader, test_dataloader, start_time=i
 
                 predictions = torch.argmax(nn.Softmax(dim=1)(y_pred), dim=1)
                 test_correct += (predictions == y_test).float().sum()
+            
+            #print(test_correct / TEST_DATASET_SIZE)
 
             if USE_WANDB: wandb.log({
                 "Epoch": epoch,
+                "AdjustedEpoch": epoch * LEARNING_RATE,
                 "Train loss": total_epoch_train_loss / train_n_batches,
                 "Train acc": 100 * (train_correct / TRAIN_DATASET_SIZE),
                 "Test acc": 100 * (test_correct / TEST_DATASET_SIZE),
@@ -206,13 +209,29 @@ class DiscardNN(nn.Module):
 
         in_features = 4515
         self.l1 = nn.Sequential(
-            nn.Linear(in_features, in_features*2),
+            nn.Conv2d(1, 32, (4, 5)),
             nn.ReLU(),
-            nn.Linear(in_features*2, 34),
+            nn.Dropout(p=0.5),
+            nn.Conv2d(64, 32, (4, 5)),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
+            nn.Conv2d(64, 32, (4, 5)),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
+            nn.Conv2d(64, 16, (4, 5)),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
+            nn.Flatten(),
+            nn.Linear(82368, 256),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
+            nn.Linear(256, 34),
         )
 
     def forward(self, x):
-        return self.l1(x)
+        x = torch.unsqueeze(x, 1)
+        x = self.l1(x)
+        return x
 
 def get_dataloaders(model_type, shuffle=True):
     total_size = TRAIN_DATASET_SIZE + TEST_DATASET_SIZE

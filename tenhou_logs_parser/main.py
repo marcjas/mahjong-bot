@@ -15,13 +15,13 @@ LOGGING_LEVEL = logging.INFO
 
 # config
 BATCH_SIZE = 1000
-EXPORT_DATA = False
+EXPORT_DATA = True
 MAX_DATA = {
-    "chii": 200000,
-    "pon": 200000,
-    "kan": 50000,
-    "riichi": 50000,
-    "discard": 200000,
+    "chii": 0,
+    "pon": 0,
+    "kan": 0,
+    "riichi": 0,
+    "discard": 500000,
 }
 
 class Data:
@@ -56,7 +56,7 @@ class Data:
     def export(self):
         for key in self:
             memmap_fn = f"../data/model_data/{key}_data.dat"
-            vector_len = 4515 + 1
+            vector_len = 4522 + 1
             
             storage = torch.FloatStorage.from_file(memmap_fn, shared=True, size=MAX_DATA[key] * vector_len)
             memmap = torch.FloatTensor(storage).reshape(MAX_DATA[key], vector_len)
@@ -335,7 +335,8 @@ class PlayerState:
         player_wind:                   4
         aka_doras_in_hand:             4
         others_riichi_status:          3
-                                       = 4515
+        padding:                       7
+                                       = 4522
         """
 
         # self._player_tiles
@@ -430,7 +431,8 @@ class PlayerState:
                player_scores + \
                player_wind + \
                aka_doras_in_hand + \
-               self._others_riichi_status
+               self._others_riichi_status + \
+               ([0] * 7)
 
     def update_aka_dora_count_in_hand(self):
         aka_doras = ["5m0", "5s0", "5p0"]

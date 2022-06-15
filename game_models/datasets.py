@@ -63,11 +63,11 @@ class DiscardDataset(Dataset):
     def __init__(self, size):
         print("Loading data...")
         self.len = size
-        self.data = torch.FloatTensor(torch.FloatStorage.from_file(DISCARD_DATA_FILE_PATH, shared=False, size=self.len * 4516)).reshape(self.len, 4516)
+        self.data = torch.FloatTensor(torch.FloatStorage.from_file(DISCARD_DATA_FILE_PATH, shared=False, size=self.len * 4523)).reshape(self.len, 4523)
         print(f"Loaded {self.len} samples...")
     
     def __len__(self):
         return self.len 
 
     def __getitem__(self, idx):
-        return self.data[idx][0:-1], self.data[idx][-1:].long()
+        return self.data[idx][0:-1].reshape(34, 133), self.data[idx][-1:].long()
