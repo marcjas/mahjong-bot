@@ -9,7 +9,11 @@ class CallModel:
 
     def predict(self, X):
         X = torch.FloatTensor(X)
-        return (self.model(X) > 0.5).item()
+        return (self.model(X) >= 0.5).item()
+
+    def predict_raw(self, X):
+        X = torch.FloatTensor(X)
+        return self.model(X).item()
 
 class RiichiModel:
     def __init__(self, model_path):
@@ -18,7 +22,11 @@ class RiichiModel:
 
     def predict(self, X):
         X = torch.FloatTensor(X)
-        return (self.model(X) > 0.5).item()
+        return (self.model(X) >= 0.5).item()
+
+    def predict_raw(self, X):
+        X = torch.FloatTensor(X)
+        return self.model(X).item()
 
 class DiscardModel:
     def __init__(self, model_path):

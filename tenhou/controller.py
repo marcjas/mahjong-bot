@@ -23,6 +23,11 @@ class Controller:
         while True:
             time.sleep(0.1)
             
+            if self.can_redeal():
+                self.client.do_action("Redeal")
+                logging.info(f"Redealt the hand.")
+                time.sleep(5.0)
+
             turn_player = self.client.get_turn_player()
 
             if turn_player is None:
@@ -31,6 +36,7 @@ class Controller:
                 new_round = True
             else:
                 if new_round:
+                    logging.info(f"Starting {self.client.get_round_name()}")
                     new_round = False
                     time.sleep(5.0)
 
@@ -102,9 +108,9 @@ class Controller:
         player_state = self.client.get_player_state()
         called_tile = player_state.get_called_tile()
 
-        if called_tile is None:
-            print(player_state)
-            self.client.save_board_image(file_name=f"error_board_{int(time.time())}")
+        #if called_tile is None:
+        #    print(player_state)
+        #    self.client.save_board_image(file_name=f"error_board_{int(time.time())}")
 
         if self.can_win():
             if self.should_win(player_state):
@@ -112,40 +118,51 @@ class Controller:
                 return
 
         if self.client.find_visible_button("Call"):
-            if self.should_chii(player_state):
-                self.client.do_action("Call")
-                logging.info(f"Called {called_tile}")
-                time.sleep(1.0)
-                return
+            self.client.do_action("Call")
+            time.sleep(1.0)
+            meld_options = self.client.get_meld_options()
+            if len(meld_options) == 0:
+                logging.error("Got an empty meld option list.")
             else:
-                self.client.do_action("×")
+                for i in meld_options:
+                    i.append(called_tile)
+                choice = self.choose_meld_option(player_state, meld_options)
+                if choice >= 0:
+                    self.client.do_meld_option(choice)
+                    logging.info(f"Called {called_tile}")
+                    time.sleep(1.0)
+                    return
+                else:
+                    self.client.do_action("×")
+                    time.sleep(1.0)
+                    self.client.do_action("×")
+        else:
+            if self.can_chii():
+                if self.should_chii(player_state):
+                    self.client.do_action("Chii")
+                    logging.info(f"Called Chii on {called_tile}")
+                    time.sleep(1.0)
+                    return
+                else:
+                    self.client.do_action("×")
 
-        if self.can_chii():
-            if self.should_chii(player_state):
-                self.client.do_action("Chii")
-                logging.info(f"Called Chii on {called_tile}")
-                time.sleep(1.0)
-                return
-            else:
-                self.client.do_action("×")
+            if self.can_pon():
+                if self.should_pon(player_state):
+                    self.client.do_action("Pon")
+                    logging.info(f"Called Pon on {called_tile}")
+                    time.sleep(1.0)
+                    return
+                else:
+                    self.client.do_action("×")
 
-        if self.can_pon():
-            if self.should_chii(player_state):
-                self.client.do_action("Pon")
-                logging.info(f"Called Pon on {called_tile}")
-                time.sleep(1.0)
-                return
-            else:
-                self.client.do_action("×")
-
-        if self.can_kan():
-            if self.should_chii(player_state):
-                self.client.do_action("Kan")
-                logging.info(f"Called Kan on {called_tile}")
-                time.sleep(1.0)
-                return
-            else:
-                self.client.do_action("×")
+            if self.can_kan():
+                if self.should_kan(player_state):
+                    self.client.do_action("Kan")
+                    logging.info(f"Called Kan on {called_tile}")
+                    time.sleep(1.0)
+                    return
+                else:
+                    self.client.do_action("×")
 
         logging.info(f"Did not Call for {called_tile}")
 
@@ -183,6 +200,9 @@ class Controller:
     def can_riichi(self):
         return self.client.find_visible_button("Riichi")
 
+    def can_redeal(self):
+        return self.client.find_visible_button("Redeal")
+
     def should_win(self, player_state):
         pass
 
@@ -198,12 +218,15 @@ class Controller:
     def should_pon(self, player_state):
         pass
 
+    def choose_meld_option(self, player_state, meld_options):
+        pass
+
     def get_discard_tile(self, player_state):
         pass
 
 class ControllerAuto(Controller):
 
-    USE_WANDB = True
+    USE_WANDB = False
 
     def __init__(self, client, total_games=1, logging_level=logging.INFO):
         super().__init__(client, logging_level=logging_level)
@@ -226,7 +249,7 @@ class ControllerAuto(Controller):
                 self.play_game(self.game_number)
 
     def play_game(self, game_number):
-        self.client.join_game()
+        #self.client.join_game()
         time.sleep(1.0)
         super().play()
         time.sleep(5.0)
@@ -238,19 +261,61 @@ class ControllerAuto(Controller):
             time.sleep(15.0)
 
     def should_kan(self, player_state):
-        return self.kan_model.predict(player_state.to_feature_list())
+        score = self.kan_model.predict_raw(player_state.to_feature_list())
+        logging.info(f"Score on kan: {score}")
+        return (score >= 0.5)
 
     def should_riichi(self, player_state):
-        return self.riichi_model.predict(player_state.to_feature_list())
+        score = self.riichi_model.predict_raw(player_state.to_feature_list())
+        logging.info(f"Score on riichi: {score}")
+        return (score >= 0.5)
 
     def should_chii(self, player_state):
-        return self.chii_model.predict(player_state.to_feature_list())
+        score = self.chii_model.predict_raw(player_state.to_feature_list())
+        logging.info(f"Score on chii: {score}")
+        return (score >= 0.5)
 
     def should_pon(self, player_state):
-        return self.pon_model.predict(player_state.to_feature_list())
+        score = self.pon_model.predict_raw(player_state.to_feature_list())
+        logging.info(f"Score on pon: {score}")
+        return (score >= 0.5)
 
     def should_win(self, player_state):
         return True
+
+    def choose_meld_option(self, player_state, meld_options):
+        scores = []
+        for meld in meld_options:
+            meld_type = self.get_meld_type(meld)
+            if meld_type == "kan":
+                score = self.kan_model.predict_raw(player_state.to_feature_list())
+                scores.append(score)
+            elif meld_type == "chii":
+                score = self.chii_model.predict_raw(player_state.to_feature_list())
+                scores.append(score)
+            elif meld_type == "pon":
+                score = self.pon_model.predict_raw(player_state.to_feature_list())
+                scores.append(score)
+            else:
+                logging.error("Got an invalid meld type")
+                score = 0.0
+                scores.append(score)
+            logging.info(f"Score on {meld_type} {str(meld)}: {score}")
+
+        best_index = scores.index(max(scores))
+        if scores[best_index] >= 0.5:
+            return best_index
+        else:
+            return -1
+
+    def get_meld_type(self, meld):
+        if len(meld) == 4:
+            return "kan"
+        meld = [tile.replace("0", "5") for tile in meld]
+        for i in range(1, len(meld)):
+            if meld[0] != meld[i]:
+                return "chii"
+        return "pon"
 
     def get_discard_tile(self, player_state):
         return self.discard_model.predict(player_state.to_feature_list())
@@ -287,6 +352,20 @@ class ControllerManual(Controller):
 
     def should_win(self, player_state):
         return (input("Should Win? (y/n): ") == "y")
+
+    def choose_meld_option(self, player_state, meld_options):
+        print("Choose a meld option...")
+        for i in meld_options:
+            print(f" {i}): {' '.join(i)}")
+        print(" Other: Don't Meld")
+        try:
+            choice = int(input("Meld choice: "))
+            if choice >= 0 and choice < len(meld_options):
+                return choice
+            else:
+                return -1
+        except:
+            return -1
 
     def get_discard_tile(self, player_state):
         return input("Tile to discard: ")

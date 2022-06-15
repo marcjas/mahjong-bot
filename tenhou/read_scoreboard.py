@@ -9,7 +9,7 @@ expected_height = 117
 min_color = 240
 
 def main(filename):
-    scoreboard = cv2.imread(f"scoreboards/{filename}.png", cv2.IMREAD_COLOR)
+    scoreboard = cv2.imread(f"tenhou/examples/scoreboards/{filename}.png", cv2.IMREAD_COLOR)
     scoreboard = cv2.resize(scoreboard, (150, 117), interpolation=cv2.INTER_LINEAR)
 
     scoreboard_reader = ScoreboardReader(scoreboard=scoreboard)

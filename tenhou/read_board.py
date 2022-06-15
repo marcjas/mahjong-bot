@@ -7,7 +7,7 @@ expected_width  = 600
 expected_height = 545
 
 def main(filename):
-    board = cv2.imread(f"boards/{filename}.png", cv2.IMREAD_COLOR)
+    board = cv2.imread(f"tenhou/examples/boards/{filename}.png", cv2.IMREAD_COLOR)
     board = cv2.resize(board, (600, 545), interpolation=cv2.INTER_LINEAR)
 
     board_reader = BoardReader(board=board)
@@ -37,10 +37,36 @@ class BoardReader:
             self.read(board)
         else:
             self.board = None
+        self.meld_options = None
 
     def read(self, board):
         board = cv2.resize(board, (expected_width, expected_height))
         self.board = board
+
+    def read_meld_options(self, melds):
+        self.meld_options = melds
+
+    def get_meld_options(self):
+        melds = []
+
+        for meld in self.meld_options:
+            tiles = []
+            tile_count = 2
+            if meld.shape[0] >= (meld.shape[1] * 1.5):
+                tile_count = 1 # Kan
+            tile_width = meld.shape[1] // tile_count
+            tile_height = (meld.shape[0] * 3) // 4
+            for i in range(tile_count):
+                tiles.append(meld[
+                    (meld.shape[0] - tile_height):(meld.shape[0]-1),
+                    (tile_width * i + 1):(tile_width * (i + 1) - 1)])
+            tiles = [self.private_tile_model.preprocess(t) for t in tiles]
+            if tile_count == 1:
+                tiles.append(tiles[0])
+                tiles.append(tiles[0])
+            melds.append(self.private_tile_model.predict(tiles))
+
+        return melds
 
     def get_private_tiles(self):
         hand_y = math.floor(self.board.shape[0] * 0.915)

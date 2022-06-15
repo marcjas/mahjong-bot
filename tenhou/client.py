@@ -44,11 +44,17 @@ def main(size_mult=1):
             print("stop:   Exit the program")
         elif command[0] == "read":
             print(client.get_player_state())
+            meld_options = client.get_meld_options()
+            if len(meld_options) > 0:
+                print("Meld Options:")
+                for meld in meld_options:
+                    print("   ", meld)
         elif command[0] == "adjust":
             client.auto_adjust_size()
         elif command[0] == "save":
             client.save_board_image()
             client.save_scoreboard_image()
+            client.save_meld_images()
         elif command[0] == "html":
             with open("page.html", "w") as f:
                 f.write(client.get_page_source())
@@ -120,6 +126,27 @@ class Client:
     def get_scoreboard_canvas(self):
         return self.driver.find_elements(By.TAG_NAME, "canvas")[2]
 
+    def get_meld_canvases(self):
+        all_buttons = self.driver.find_elements(By.CLASS_NAME, "bgb")
+
+        visible_buttons = []
+        for element in all_buttons:
+            parent = element.find_element(By.XPATH, "..")
+            style = parent.get_attribute("style")
+            if "visibility: hidden" not in style and "display: none" not in style:
+                visible_buttons.append(element)
+        
+        canvases = []
+
+        for element in visible_buttons:
+            try:
+                canvas = element.find_element(By.TAG_NAME, "canvas")
+                canvases.append(canvas)
+            except:
+                pass
+
+        return canvases
+
     def get_board_image(self):
         canvas = self.get_board_canvas()
         image = self.decode_canvas(canvas)
@@ -130,13 +157,26 @@ class Client:
         image = self.decode_canvas(canvas)
         return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
+    def get_meld_images(self):
+        canvases = self.get_meld_canvases()
+        images = []
+        for canvas in canvases:
+            image = self.decode_canvas(canvas)
+            images.append(cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        return images
+
     def save_board_image(self, file_name="board"):
         image = self.get_board_image()
         cv2.imwrite(f"{file_name}.png", image)
 
-    def save_scoreboard_image(self, file_name="board"):
+    def save_scoreboard_image(self, file_name="scoreboard"):
         image = self.get_scoreboard_image()
         cv2.imwrite(f"{file_name}.png", image)
+
+    def save_meld_images(self, file_name="call"):
+        images = self.get_meld_images()
+        for i, image in enumerate(images):
+            cv2.imwrite(f"{file_name}_{i}.png", image)
 
     def decode_canvas(self, canvas):
         canvas_base64 = self.driver.execute_script(
@@ -155,27 +195,21 @@ class Client:
             read_board.expected_height - 46) \
             .click().perform()
 
-    def do_action(self, action, manual=False):
+    def do_action(self, action):
         try:
             element = self.find_visible_button(action)
             ac = ActionChains(self.driver)
             ac.move_to_element(element).click().perform()
-            if action == "Call":
-                time.sleep(0.2)
-                elements = self.driver.find_elements(By.CLASS_NAME, "bgb")
-                visible_elements = []
-                for element in elements:
-                    parent = element.find_element(By.XPATH, "..")
-                    style = parent.get_attribute("style")
-                    if "visibility: hidden" not in style and "display: none" not in style:
-                        visible_elements.append(element)
-                if len(visible_elements) > 0:
-                    ac = ActionChains(self.driver)
-                    ac.move_to_element(visible_elements[0]).click().perform()
-                else:
-                    logging.error("Found no Call options, this should not happen.")
         except:
             logging.warning("Failed to click on element")
+
+    def do_meld_option(self, index):
+        canvases = self.get_meld_canvases()
+        if index < len(canvases):
+            ac = ActionChains(self.driver)
+            ac.move_to_element(canvases[index]).click().perform()
+        else:
+            logging.error("Tried to choose an out of bounds meld option.")
 
     def find_visible_button(self, action):
         bold = (action == "Ron" or action == "Tsumo")
@@ -247,6 +281,13 @@ class Client:
         self.scoreboard_reader.read(self.get_scoreboard_image())
         return self.scoreboard_reader.get_turn_player()
 
+    def get_round_name(self):
+        self.scoreboard_reader.read(self.get_scoreboard_image())
+        wind = self.scoreboard_reader.get_round_wind()
+        round_number = self.scoreboard_reader.get_round_number()
+        wind_name = ["East", "South", "West", "North"][wind]
+        return f"{wind_name} {round_number}"
+
     def get_final_player_scores(self):
         rows = self.driver.find_elements(By.CLASS_NAME, "bbg5")
         players_and_scores = []
@@ -256,6 +297,10 @@ class Client:
             player_score = int(row.find_element(By.TAG_NAME, "td").text)
             players_and_scores.append((player_name, player_score))
         return players_and_scores
+
+    def get_meld_options(self):
+        self.board_reader.read_meld_options(self.get_meld_images())
+        return self.board_reader.get_meld_options()
 
     def reset_cursor(self):
         canvas = self.get_board_canvas()

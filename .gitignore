@@ -1,5 +1,5 @@
 **/__pycache__/
-tenhou/__pycache__/
+tenhou/__pycache__/*
 data/tenhou-logs/*
 data/model_data/*
 data/model_data_test/*
@@ -7,3 +7,4 @@ tenhou_logs_parser/metadata.pickle
 game_models/wandb
 game_models/models/*
 models/
+wandb/
