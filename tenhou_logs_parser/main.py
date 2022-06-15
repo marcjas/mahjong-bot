@@ -8,21 +8,35 @@ import glob
 import torch
 import os
 
+sys.path.append("utils")
+import mahjong_utils
 from constants import TILES, CHII_COMBINATIONS, WINDS
 from tenhou_decoder import Game
 
 LOGGING_LEVEL = logging.INFO
 
 # config
-BATCH_SIZE = 1000
-EXPORT_DATA = False
+BATCH_SIZE = 100
+EXPORT_DATA = True
 MAX_DATA = {
-    "chii": 200000,
-    "pon": 200000,
-    "kan": 50000,
-    "riichi": 50000,
-    "discard": 200000,
+    "chii": 0,
+    "pon": 0,
+    "kan": 0,
+    "riichi": 0,
+    "discard": 5000,
 }
+DISCARD_FEATURES = sum([
+    34 * 4,      # player tiles
+    34 * 27 * 4, # discarded tiles
+    34 * 4 * 4,  # open tiles
+    34 * 4,      # dora indicators
+    34,          # shanten increase per discard
+    34 * 47,     # improvement tiles per discard (buckets, start at range 1, increase by 1 every 10 buckets)
+    12,          # round name
+    4 * 20,      # player scores (buckets from 0 to 1000, range 50)
+    4,           # player wind
+    4,           # aka doras in hand
+    3])          # others' riichi status
 
 class Data:
     _data = {
@@ -55,14 +69,14 @@ class Data:
 
     def export(self):
         for key in self:
-            memmap_fn = f"../data/model_data/{key}_data.dat"
-            vector_len = 4515 + 1
+            memmap_fn = f"data/model_data/{key}_data.dat"
+            vector_len = DISCARD_FEATURES + 1
             
             storage = torch.FloatStorage.from_file(memmap_fn, shared=True, size=MAX_DATA[key] * vector_len)
             memmap = torch.FloatTensor(storage).reshape(MAX_DATA[key], vector_len)
 
             data = self[key]
-            for state, action in zip(data["states"], data["actions"]):
+            for i, (state, action) in tqdm(enumerate(zip(data["states"], data["actions"]))):
                 if data["writes"] >= MAX_DATA[key]: 
                     break
                 if key == "discard":
@@ -330,12 +344,14 @@ class PlayerState:
         player_open_tiles:             34 x 4
         others_open_tiles:             34 x 4 x 3
         dora_indicators:               34 x 4
+        better_shanten                 34
+        improvement_tiles              34 x 47
         round_name:                    12
-        player_scores:                 4
+        player_scores:                 4 x 20
         player_wind:                   4
         aka_doras_in_hand:             4
         others_riichi_status:          3
-                                       = 4515
+                                       = 6147
         """
 
         # self._player_tiles
@@ -396,21 +412,50 @@ class PlayerState:
                     dora_indicators[idx + i * 34] = 1
                     break
 
+        # better shanten
+        better_shanten = [0] * 34
+        potential_shanten = mahjong_utils.get_potential_shanten(self._player_tiles)
+        best_shanten = min(potential_shanten)
+        for i, tile in enumerate(self._player_tiles):
+            if potential_shanten[i] == best_shanten:
+                idx = TILES.index(tile[:2])
+                better_shanten[idx] = 1
+
+        def get_bucket(x):
+            bucket = 0
+            i = 1
+            while i < 136:
+                if x <= i:
+                    return bucket
+                bucket += 1
+                i += (1 + bucket // 10)
+            return bucket - 1
+
+        improvement_tiles = [0] * 34 * 47
+        #tile_counts = mahjong_utils.get_improvement_tiles(self._player_tiles)
+        #for i, tile in enumerate(self._player_tiles):
+        #    bucket = get_bucket(tile_counts[i])
+        #    idx = TILES.index(tile[:2])
+        #    improvement_tiles[bucket * 34 + idx]
+
         # self._round_name
         round_name = [0] * 12
         round_wind = self._round_name[0]
         round_number = int(self._round_name[1])
         round_name[WINDS.index(round_wind) + round_number]
 
+        def get_bucket(x):
+            if x >= 1000:
+                return 19
+            elif x <= 0:
+                return 0
+            return x // 50
+
         # self._player_scores
-        player_scores = [0] * 4
+        player_scores = [0] * 4 * 20
         for i, player_score in enumerate(self._player_scores):
-            if player_score >= 1000:
-                player_scores[i] = 1
-            elif player_score <= 0:
-                player_scores[i] = 0
-            else:
-                player_scores[i] = player_score / 1000
+            bucket = get_bucket(player_score)
+            player_scores[bucket * 4 + i] = 1
 
         # self._player_wind
         player_wind = [0] * 4
@@ -426,6 +471,8 @@ class PlayerState:
                player_open_tiles + \
                others_open_tiles + \
                dora_indicators + \
+               better_shanten + \
+               improvement_tiles + \
                round_name + \
                player_scores + \
                player_wind + \
@@ -653,7 +700,7 @@ def main(logs_dir):
 
     if EXPORT_DATA:
         for key in data:
-            fn = f"../data/model_data/{key}_data.dat"
+            fn = f"data/model_data/{key}_data.dat"
             if os.path.exists(fn):
                 os.remove(fn)
 
