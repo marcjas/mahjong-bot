@@ -431,12 +431,35 @@ class PlayerState:
                 i += (1 + bucket // 10)
             return bucket - 1
 
+        tile_counts_on_field = [0] * 34
+        for tile in self._player_tiles:
+            tile_counts_on_field[TILES.index(tile[:2])] += 1
+        for tile in self._player_discarded_tiles:
+            tile_counts_on_field[TILES.index(tile[:2])] += 1
+        for pile in self._others_discarded_tiles:
+            for tile in pile:
+                tile_counts_on_field[TILES.index(tile[:2])] += 1
+        for meld in self._player_open_tiles:
+            for tile in meld:
+                tile_counts_on_field[TILES.index(tile[:2])] += 1
+        for pile in self._others_open_tiles:
+            for meld in pile:
+                for tile in meld:
+                    tile_counts_on_field[TILES.index(tile[:2])] += 1
+        for tile in self._dora_indicators:
+            tile_counts_on_field[TILES.index(tile[:2])] += 1
+
         improvement_tiles = [0] * 34 * 47
-        #tile_counts = mahjong_utils.get_improvement_tiles(self._player_tiles)
-        #for i, tile in enumerate(self._player_tiles):
-        #    bucket = get_bucket(tile_counts[i])
-        #    idx = TILES.index(tile[:2])
-        #    improvement_tiles[bucket * 34 + idx]
+        improvement_tile_lists = mahjong_utils.get_improvement_tile_lists(self._player_tiles)
+        for i, improvement_tile_list in enumerate(improvement_tile_lists):
+            for j in range(34):
+                if improvement_tile_list[j] > 0:
+                    improvement_tile_list[j] -= tile_counts_on_field[j]
+                    if improvement_tile_list[j] < 0:
+                        improvement_tile_list[j] = 0
+            bucket = get_bucket(sum(improvement_tile_list))
+            idx = TILES.index(tile[:2])
+            improvement_tiles[bucket * 34 + idx]
 
         # self._round_name
         round_name = [0] * 12

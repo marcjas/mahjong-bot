@@ -53,32 +53,39 @@ def is_agari(hand):
     )
     return agari.is_agari(tiles)
 
-def get_improvement_tiles(hand):
-    improvement_tile_count = []
-    for i in range(len(hand)):
-        new_hand = [hand[j] for j in range(len(hand)) if j != i]
-        new_shanten = get_shanten(new_hand)
-        improvement_tiles = []
-        if new_shanten == 0:
-            for new_tile in TILES:
-                maybe_winning_hand = new_hand + [new_tile]
-                if is_agari(maybe_winning_hand):
-                    improvement_tiles.append(new_tile)
-        else:
-            for j, tile in enumerate(new_hand):
-                for new_tile in TILES:
-                    if new_tile != tile:
-                        new_hand[j] = new_tile
-                        potential_shanten = get_shanten(new_hand)
-                        if potential_shanten < new_shanten:
-                            if new_tile not in improvement_tiles:
-                                improvement_tiles.append(new_tile)
+def get_improvement_tile_lists(hand):
+    shanten = Shanten()
+    agari = Agari()
+    improvement_tile_lists = []
+    man, pin, sou, honors = convert_hand(hand)
+    hand = TilesConverter.string_to_34_array(
+        man=man, pin=pin, sou=sou, honors=honors
+    )
+    for i, tile_count in enumerate(hand):
+        if tile_count > 0:
+            hand[i] -= 1
+            new_shanten = shanten.calculate_shanten(hand)
+            improvement_tiles = [0] * 34
+            if new_shanten == 0:
+                for j in range(34):
+                    hand[j] += 1
+                    if agari.is_agari(hand):
+                        improvement_tiles[i] = 4
+                    hand[j] -= 1
+            else:
+                for j in range(34):
+                    if hand[j] > 0:
+                        hand[j] -= 1
+                        for k in range(34):
+                            if hand[k] < 4:
+                                hand[k] += 1
+                                potential_shanten = shanten.calculate_shanten(hand)
+                                if potential_shanten < new_shanten:
+                                    improvement_tiles[j] = 4
+                                hand[k] -= 1
+                        hand[j] += 1
+            hand[i] += 1
 
-                new_hand[j] = tile
+            improvement_tile_lists.append(improvement_tiles)
 
-        count = 0
-        for tile in improvement_tiles:
-            count += 4 - len([j for j in hand if j == tile])
-        improvement_tile_count.append(count)
-
-    return improvement_tile_count
+    return improvement_tile_lists
